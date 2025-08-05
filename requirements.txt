@@ -2,10 +2,8 @@
 python-dotenv==1.0.0
 pydantic==2.5.3
 aiohttp==3.9.1
-asyncio-compat==0.3.0
 
 # Database (mock Supabase)
-sqlite3-fdb==0.1.0
 sqlalchemy==2.0.25
 alembic==1.13.1
 
@@ -19,7 +17,6 @@ httpx==0.26.0
 
 # Scheduling and async
 apscheduler==3.10.4
-asyncio==3.4.3
 
 # Logging and monitoring
 structlog==23.2.0

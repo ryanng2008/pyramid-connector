@@ -2,7 +2,8 @@
 
 import os
 from typing import Optional, List, Dict, Any
-from pydantic import BaseSettings, Field
+from pydantic import Field
+from pydantic_settings import BaseSettings
 from pathlib import Path
 
 
@@ -28,8 +29,8 @@ class GoogleDriveSettings(BaseSettings):
 class AutodeskSettings(BaseSettings):
     """Autodesk Construction Cloud API configuration."""
     
-    client_id: str = Field(env="AUTODESK_CLIENT_ID")
-    client_secret: str = Field(env="AUTODESK_CLIENT_SECRET")
+    client_id: str = Field(default="", env="AUTODESK_CLIENT_ID")
+    client_secret: str = Field(default="", env="AUTODESK_CLIENT_SECRET")
     callback_url: str = Field(default="http://localhost:8080/callback", env="AUTODESK_CALLBACK_URL")
     base_url: str = Field(default="https://developer.api.autodesk.com", env="AUTODESK_BASE_URL")
     
@@ -40,8 +41,8 @@ class AutodeskSettings(BaseSettings):
 class SupabaseSettings(BaseSettings):
     """Supabase configuration (mock for now)."""
     
-    url: str = Field(env="SUPABASE_URL")
-    service_role_key: str = Field(env="SUPABASE_SERVICE_ROLE_KEY")
+    url: str = Field(default="", env="SUPABASE_URL")
+    service_role_key: str = Field(default="", env="SUPABASE_SERVICE_ROLE_KEY")
     
     class Config:
         env_prefix = "SUPABASE_"
