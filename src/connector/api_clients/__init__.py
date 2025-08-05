@@ -9,6 +9,7 @@ from .base import (
 )
 
 from .google_drive import GoogleDriveClient
+from .autodesk import AutodeskConstructionCloudClient
 from .factory import APIClientFactory
 
 __all__ = [
@@ -21,6 +22,7 @@ __all__ = [
     
     # Client implementations
     "GoogleDriveClient",
+    "AutodeskConstructionCloudClient",
     
     # Factory
     "APIClientFactory"

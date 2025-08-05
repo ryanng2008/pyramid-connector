@@ -5,6 +5,7 @@ from ..config.settings import get_settings
 from ..database.models import EndpointType
 from .base import BaseAPIClient
 from .google_drive import GoogleDriveClient
+from .autodesk import AutodeskConstructionCloudClient
 
 
 class APIClientFactory:
@@ -12,7 +13,7 @@ class APIClientFactory:
     
     _client_classes: Dict[EndpointType, Type[BaseAPIClient]] = {
         EndpointType.GOOGLE_DRIVE: GoogleDriveClient,
-        # EndpointType.AUTODESK_CONSTRUCTION_CLOUD: AutodeskClient,  # Will be implemented in Task 4
+        EndpointType.AUTODESK_CONSTRUCTION_CLOUD: AutodeskConstructionCloudClient,
     }
     
     @classmethod
@@ -48,12 +49,13 @@ class APIClientFactory:
                 "credentials_path": settings.google_drive.credentials_path,
                 "application_name": settings.google_drive.application_name
             })
-        # elif endpoint_type == EndpointType.AUTODESK_CONSTRUCTION_CLOUD:
-        #     kwargs.update({
-        #         "client_id": settings.autodesk.client_id,
-        #         "client_secret": settings.autodesk.client_secret,
-        #         "callback_url": settings.autodesk.callback_url
-        #     })
+        elif endpoint_type == EndpointType.AUTODESK_CONSTRUCTION_CLOUD:
+            kwargs.update({
+                "client_id": settings.autodesk.client_id,
+                "client_secret": settings.autodesk.client_secret,
+                "callback_url": settings.autodesk.callback_url,
+                "base_url": settings.autodesk.base_url
+            })
         
         return client_class(endpoint_details=endpoint_details, **kwargs)
     

@@ -8,13 +8,6 @@ It should be the foundation of a feature implemented in a SaaS. Therefore, room 
 
 First, write a task plan to complete this in this ACTIONITEMS.md file. Then, run the tasks.
 
-## Task 3: API Client - Google Drive
-- Implement Google Drive API client
-- Set up authentication (service account or OAuth)
-- Create methods to list and fetch file metadata
-- Handle pagination and rate limiting
-- Extract required file information (link, title, dates, etc.)
-
 ## Task 4: API Client - Autodesk Construction Cloud
 - Implement Autodesk Construction Cloud API client
 - Set up authentication (OAuth 2.0)
