@@ -2,7 +2,7 @@ You are to build this new project. The project, and your tasks step-by-step are 
 
 Log all your changes in cursorlog.md. Upon completing a task, write a bullet point summary of what you built in cursorlog.md under the Agent Work Summary heading. If there is anything you chose to include as the action list was insufficient, note it in cursorlog.md as well.
 
-After every successful change you make — that is undoubtedly successful — commit to git. (backend-playground and frontend are two different repositories). After you commit, you can move on to the next task.
+After every successful change you make — that is undoubtedly successful — commit to git. (backend-playground and frontend are two different repositories). After you commit, you can move on to the next task. You don't need to ask anything.
 
 When you commit the frontend, make sure the apiConfig.ts uses the PRODUCTION url.
 

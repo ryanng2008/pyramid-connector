@@ -69,6 +69,7 @@ connector/
 - Committed initial project structure (commit: dd768d8)
 - Committed complete database layer (commit: bcf62a8)
 - Committed Google Drive API client (commit: 7c205ac)
+- Committed Autodesk Construction Cloud API client (commit: b464d73)
 
 ### Task 3: API Client - Google Drive ✅
 - Implemented comprehensive Google Drive API client with service account authentication
@@ -89,3 +90,23 @@ connector/
 - **Performance**: Async execution with thread pool for API calls and execution timing
 - **Testing**: Mocked test suite covering authentication, filtering, metadata conversion
 - **Extensibility**: Factory pattern and base classes for adding new API clients
+
+### Task 4: API Client - Autodesk Construction Cloud ✅
+- Implemented comprehensive Autodesk Construction Cloud API client with OAuth 2.0 authentication
+- Built async file listing with project-based filtering and pagination
+- Created file type filtering for CAD/BIM formats (dwg, pdf, rvt) and metadata extraction
+- Added proper error handling for OAuth failures and API connection issues
+- Implemented project info retrieval and sync information endpoints
+- Updated API client factory to support Autodesk endpoints
+- Created comprehensive test suite covering core functionality
+- Designed consistent architecture following Google Drive client patterns
+
+### Autodesk Features Implemented:
+- **Authentication**: OAuth 2.0 client credentials flow with automatic token management
+- **File Listing**: Project-based async generator with pagination and configurable limits
+- **Metadata Extraction**: Complete file information including version numbers and user tracking
+- **Filtering**: File type filtering by extension for construction/engineering file formats
+- **Error Handling**: Comprehensive exception handling for OAuth and API connection issues
+- **Performance**: Async execution with aiohttp session management and connection handling
+- **Testing**: Core functionality test suite covering metadata conversion and filtering
+- **Integration**: Factory pattern support with proper configuration management
