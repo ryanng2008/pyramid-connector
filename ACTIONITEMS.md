@@ -8,12 +8,6 @@ It should be the foundation of a feature implemented in a SaaS. Therefore, room 
 
 First, write a task plan to complete this in this ACTIONITEMS.md file. Then, run the tasks.
 
-## Task 2: Database Layer (Mock Supabase)
-- Create mock Supabase table schema for file metadata
-- Implement database connection and operations
-- Create tables for files, endpoints, and sync status
-- Add methods for checking existing files and inserting new ones
-
 ## Task 3: API Client - Google Drive
 - Implement Google Drive API client
 - Set up authentication (service account or OAuth)
