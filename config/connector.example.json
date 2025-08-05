@@ -1,0 +1,64 @@
+{
+  "version": "1.0.0",
+  "environment": "development",
+  "scheduling": {
+    "default_schedule": "interval",
+    "default_interval_minutes": 5,
+    "max_concurrent_syncs": 10,
+    "sync_timeout_minutes": 30,
+    "max_retries": 3,
+    "retry_delay_seconds": 30,
+    "rate_limit_backoff_seconds": 60,
+    "max_files_per_sync": 1000,
+    "batch_size": 50
+  },
+  "log_level": "INFO",
+  "log_format": "json",
+  "require_https": true,
+  "webhook_timeout_seconds": 30,
+  "health_check_interval_minutes": 5,
+  "metrics_enabled": true,
+  "endpoints": [
+    {
+      "name": "Main Google Drive Folder",
+      "endpoint_type": "google_drive",
+      "project_id": "project_123",
+      "user_id": "user_456",
+      "description": "Primary Google Drive folder for document sync",
+      "endpoint_details": {
+        "folder_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+        "include_shared": true,
+        "file_types": ["pdf", "docx", "xlsx", "pptx"]
+      },
+      "schedule": "interval",
+      "schedule_config": {
+        "interval_minutes": 5
+      },
+      "file_types": ["pdf", "docx", "xlsx", "pptx"],
+      "max_files_per_sync": 500,
+      "is_active": true,
+      "tags": ["documents", "main", "office"]
+    },
+    {
+      "name": "Construction Project Files", 
+      "endpoint_type": "autodesk_construction_cloud",
+      "project_id": "project_123",
+      "user_id": "user_456",
+      "description": "Autodesk Construction Cloud project files",
+      "endpoint_details": {
+        "project_id": "b.project_id_here",
+        "folder_id": "folder_123",
+        "include_subfolders": true,
+        "file_types": ["dwg", "rvt", "pdf", "nwd", "nwc"]
+      },
+      "schedule": "interval",
+      "schedule_config": {
+        "interval_minutes": 10
+      },
+      "file_types": ["dwg", "rvt", "pdf", "nwd", "nwc"],
+      "max_files_per_sync": 200,
+      "is_active": true,
+      "tags": ["cad", "construction", "bim"]
+    }
+  ]
+}

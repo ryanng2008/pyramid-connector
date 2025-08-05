@@ -1,0 +1,120 @@
+# Example connector configuration file
+# Copy this to connector.yaml and customize for your environment
+
+version: "1.0.0"
+environment: "development"  # development, staging, production
+
+# Global scheduling configuration
+scheduling:
+  default_schedule: "interval"
+  default_interval_minutes: 5
+  max_concurrent_syncs: 10
+  sync_timeout_minutes: 30
+  max_retries: 3
+  retry_delay_seconds: 30
+  rate_limit_backoff_seconds: 60
+  max_files_per_sync: 1000
+  batch_size: 50
+
+# Logging configuration
+log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_format: "json"  # json, console
+
+# Security and monitoring
+require_https: true
+webhook_timeout_seconds: 30
+health_check_interval_minutes: 5
+metrics_enabled: true
+
+# Sync endpoints configuration
+endpoints:
+  # Google Drive endpoint example
+  - name: "Main Google Drive Folder"
+    endpoint_type: "google_drive"
+    project_id: "project_123"
+    user_id: "user_456"
+    description: "Primary Google Drive folder for document sync"
+    
+    # Google Drive specific configuration
+    endpoint_details:
+      folder_id: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"  # Optional: specific folder ID
+      include_shared: true
+      file_types: ["pdf", "docx", "xlsx", "pptx"]
+    
+    # Sync schedule
+    schedule: "interval"
+    schedule_config:
+      interval_minutes: 5
+    
+    # File filtering
+    file_types: ["pdf", "docx", "xlsx", "pptx"]
+    max_files_per_sync: 500
+    
+    # Status and organization
+    is_active: true
+    tags: ["documents", "main", "office"]
+
+  # Autodesk Construction Cloud endpoint example
+  - name: "Construction Project Files"
+    endpoint_type: "autodesk_construction_cloud"
+    project_id: "project_123"
+    user_id: "user_456"
+    description: "Autodesk Construction Cloud project files"
+    
+    # Autodesk specific configuration
+    endpoint_details:
+      project_id: "b.project_id_here"  # Required: Autodesk project ID
+      folder_id: "folder_123"  # Optional: specific folder ID
+      include_subfolders: true
+      file_types: ["dwg", "rvt", "pdf", "nwd", "nwc"]
+    
+    # Sync schedule
+    schedule: "interval"
+    schedule_config:
+      interval_minutes: 10
+    
+    # File filtering
+    file_types: ["dwg", "rvt", "pdf", "nwd", "nwc"]
+    max_files_per_sync: 200
+    
+    # Status and organization
+    is_active: true
+    tags: ["cad", "construction", "bim"]
+
+  # Manual sync endpoint example
+  - name: "Archive Google Drive"
+    endpoint_type: "google_drive"
+    project_id: "project_123"
+    user_id: "user_456"
+    description: "Archive folder - manual sync only"
+    
+    endpoint_details:
+      folder_id: "archive_folder_id"
+      include_shared: false
+      file_types: ["pdf"]
+    
+    # Manual sync - no automatic scheduling
+    schedule: "manual"
+    
+    file_types: ["pdf"]
+    max_files_per_sync: 1000
+    is_active: true
+    tags: ["archive", "manual"]
+
+  # Webhook-triggered endpoint example (for future implementation)
+  - name: "Webhook Triggered Sync"
+    endpoint_type: "google_drive"
+    project_id: "project_456"
+    user_id: "user_789"
+    description: "Sync triggered by webhook events"
+    
+    endpoint_details:
+      folder_id: "webhook_folder_id"
+      include_shared: true
+    
+    schedule: "webhook"
+    schedule_config:
+      webhook_secret: "your-webhook-secret-here"
+    
+    is_active: false  # Disabled by default
+    tags: ["webhook", "realtime"]
