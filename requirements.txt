@@ -23,6 +23,7 @@ apscheduler==3.10.4
 # Logging and monitoring
 structlog==23.2.0
 colorlog==6.8.0
+psutil==5.9.8
 
 # Configuration
 pyyaml==6.0.1

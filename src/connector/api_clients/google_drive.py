@@ -15,6 +15,7 @@ import google.auth.exceptions
 
 from .base import BaseAPIClient, FileMetadata, RateLimitError, AuthenticationError, APIConnectionError
 from ..utils.logging import log_async_execution_time
+from ..performance import get_metrics_collector, get_concurrent_executor, AsyncRateLimiter
 
 
 class GoogleDriveClient(BaseAPIClient):
@@ -32,6 +33,13 @@ class GoogleDriveClient(BaseAPIClient):
         self.credentials_path = credentials_path
         self.service = None
         self.credentials = None
+        
+        # Performance optimization components
+        self.metrics = get_metrics_collector()
+        self.rate_limiter = AsyncRateLimiter(
+            max_calls=endpoint_details.get("rate_limit_calls", 100),
+            time_window=endpoint_details.get("rate_limit_window", 100.0)  # 100 calls per 100 seconds
+        )
         
         # Configuration from endpoint_details
         self.folder_id = endpoint_details.get("folder_id")  # None = root folder
@@ -146,24 +154,33 @@ class GoogleDriveClient(BaseAPIClient):
                     int(target_max - files_returned)
                 )
                 
-                # Execute API request
-                request = self.service.files().list(
-                    q=query,
-                    fields=(
-                        "nextPageToken, files(id, name, parents, webViewLink, "
-                        "size, mimeType, createdTime, modifiedTime, ownedByMe, "
-                        "shared, permissions, thumbnailLink, exportLinks)"
-                    ),
-                    pageSize=page_size,
-                    pageToken=page_token,
-                    includeItemsFromAllDrives=self.include_shared,
-                    supportsAllDrives=self.include_shared
-                )
+                # Execute API request with rate limiting and metrics
+                async with self.rate_limiter.limit():
+                    async with self.metrics.time_operation(
+                        "google_drive.api_request",
+                        tags={"operation": "list_files", "page_size": str(page_size)}
+                    ):
+                        request = self.service.files().list(
+                            q=query,
+                            fields=(
+                                "nextPageToken, files(id, name, parents, webViewLink, "
+                                "size, mimeType, createdTime, modifiedTime, ownedByMe, "
+                                "shared, permissions, thumbnailLink, exportLinks)"
+                            ),
+                            pageSize=page_size,
+                            pageToken=page_token,
+                            includeItemsFromAllDrives=self.include_shared,
+                            supportsAllDrives=self.include_shared
+                        )
+                        
+                        # Run in thread pool to avoid blocking
+                        result = await asyncio.get_event_loop().run_in_executor(
+                            None, self._execute_request, request
+                        )
                 
-                # Run in thread pool to avoid blocking
-                result = await asyncio.get_event_loop().run_in_executor(
-                    None, self._execute_request, request
-                )
+                # Record API call metrics
+                self.metrics.increment_counter("google_drive.api_calls")
+                self.metrics.record_value("google_drive.files_per_page", len(result.get("files", [])))
                 
                 files = result.get("files", [])
                 page_token = result.get("nextPageToken")
@@ -188,12 +205,17 @@ class GoogleDriveClient(BaseAPIClient):
                         yield file_metadata
                         files_returned += 1
                         
+                        # Record successful file processing
+                        self.metrics.increment_counter("google_drive.files_processed")
+                        
                     except Exception as e:
                         self.logger.warning(
                             "Failed to process file metadata",
                             file_id=file_data.get("id"),
                             error=str(e)
                         )
+                        # Record processing error
+                        self.metrics.increment_counter("google_drive.processing_errors")
                         continue
                 
                 # Break if no more pages
@@ -206,8 +228,10 @@ class GoogleDriveClient(BaseAPIClient):
         except HttpError as e:
             if e.resp.status == 429:  # Rate limit exceeded
                 retry_after = int(e.resp.headers.get("Retry-After", 60))
+                self.metrics.increment_counter("google_drive.rate_limit_errors")
                 raise RateLimitError("Google Drive rate limit exceeded", retry_after)
             else:
+                self.metrics.increment_counter("google_drive.api_errors")
                 raise APIConnectionError(f"Google Drive API error: {e}")
         
         except Exception as e:
