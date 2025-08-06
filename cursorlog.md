@@ -177,3 +177,13 @@ The File Connector is now a **production-ready, enterprise-grade file synchroniz
 ✅ **Extensible Architecture** - Plugin system for adding new APIs and custom processors  
 
 The system is ready for immediate deployment and can handle enterprise-scale file synchronization across multiple cloud platforms with high reliability and performance.
+
+## Getting Started Documentation and Endpoint Testing (commit: 173dbf3)
+
+### Getting Started Guide and Testing Tools:
+- **Comprehensive Documentation**: Created detailed `getting_started.md` with step-by-step setup instructions, configuration guides, and troubleshooting
+- **Endpoint Testing Script**: Built `test_endpoints.py` utility to verify API connectivity and authentication before running the main connector
+- **Configuration Documentation**: Complete guides for database setup (PostgreSQL/SQLite), environment variables, and endpoint configuration
+- **Testing Features**: Authentication verification, file listing tests, health checks, and verbose output options
+- **Troubleshooting Guide**: Common issues resolution, network debugging, and performance tuning recommendations
+- **User Experience**: Clear documentation structure with examples, prerequisites, and next steps for immediate system deployment
