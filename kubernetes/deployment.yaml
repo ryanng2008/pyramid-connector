@@ -1,0 +1,172 @@
+# Kubernetes deployment for File Connector
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: file-connector
+  namespace: file-connector
+  labels:
+    app: file-connector
+    component: application
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: file-connector
+      component: application
+  template:
+    metadata:
+      labels:
+        app: file-connector
+        component: application
+    spec:
+      containers:
+      - name: file-connector
+        image: file-connector:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: CONNECTOR_ENVIRONMENT
+          value: "production"
+        - name: CONNECTOR_LOG_LEVEL
+          value: "INFO"
+        - name: CONNECTOR_MAX_CONCURRENT_SYNCS
+          value: "10"
+        - name: CONNECTOR_DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: file-connector-secrets
+              key: database-url
+        - name: CONNECTOR_AUTODESK_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: file-connector-secrets
+              key: autodesk-client-id
+        - name: CONNECTOR_AUTODESK_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: file-connector-secrets
+              key: autodesk-client-secret
+        - name: CONNECTOR_SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: file-connector-secrets
+              key: supabase-url
+        - name: CONNECTOR_SUPABASE_SERVICE_ROLE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: file-connector-secrets
+              key: supabase-service-role-key
+        - name: CONNECTOR_GOOGLE_DRIVE_CREDENTIALS_PATH
+          value: "/app/credentials/google-service-account.json"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+        - name: credentials-volume
+          mountPath: /app/credentials
+          readOnly: true
+        - name: logs-volume
+          mountPath: /app/logs
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: config-volume
+        configMap:
+          name: file-connector-config
+      - name: credentials-volume
+        secret:
+          secretName: file-connector-credentials
+      - name: logs-volume
+        emptyDir: {}
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: file-connector-service
+  namespace: file-connector
+  labels:
+    app: file-connector
+    component: application
+spec:
+  selector:
+    app: file-connector
+    component: application
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: file-connector-config
+  namespace: file-connector
+  labels:
+    app: file-connector
+data:
+  connector.yaml: |
+    # Example configuration - customize as needed
+    connector:
+      name: "file-connector"
+      environment: "production"
+      log_level: "INFO"
+      max_concurrent_syncs: 10
+    
+    endpoints: []  # Add your endpoints here
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: file-connector-hpa
+  namespace: file-connector
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: file-connector
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

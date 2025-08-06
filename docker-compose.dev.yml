@@ -1,0 +1,129 @@
+# Docker Compose configuration for development
+version: '3.8'
+
+services:
+  # Development connector with hot reload
+  connector-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: file-connector-dev
+    environment:
+      # Development configuration
+      - CONNECTOR_ENVIRONMENT=development
+      - CONNECTOR_LOG_LEVEL=DEBUG
+      - CONNECTOR_MAX_CONCURRENT_SYNCS=5
+      
+      # Database configuration
+      - CONNECTOR_DATABASE_URL=postgresql://connector:connector123@postgres-dev:5432/connector_dev
+      
+      # Mock configurations for development
+      - CONNECTOR_GOOGLE_DRIVE_CREDENTIALS_PATH=/app/credentials/google-service-account-dev.json
+      - CONNECTOR_AUTODESK_CLIENT_ID=dev_client_id
+      - CONNECTOR_AUTODESK_CLIENT_SECRET=dev_client_secret
+      - CONNECTOR_SUPABASE_URL=http://localhost:54321
+      - CONNECTOR_SUPABASE_SERVICE_ROLE_KEY=dev_service_role_key
+    
+    volumes:
+      # Mount source code for hot reload
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./tests:/app/tests
+      - ./credentials:/app/credentials
+      
+      # Development logs
+      - ./logs:/app/logs
+    
+    ports:
+      - "8080:8080"
+      - "5678:5678"  # Debugger port
+    
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+    
+    networks:
+      - connector_dev_network
+    
+    # Override command for development
+    command: ["python", "-m", "src.connector.main", "--dev", "--reload"]
+    
+    # Development doesn't need resource limits
+    stdin_open: true
+    tty: true
+
+  # Development PostgreSQL
+  postgres-dev:
+    image: postgres:15-alpine
+    container_name: connector-postgres-dev
+    environment:
+      - POSTGRES_DB=connector_dev
+      - POSTGRES_USER=connector
+      - POSTGRES_PASSWORD=connector123
+    
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U connector -d connector_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    
+    networks:
+      - connector_dev_network
+
+  # Development Redis
+  redis-dev:
+    image: redis:7-alpine
+    container_name: connector-redis-dev
+    command: redis-server --appendonly yes
+    
+    volumes:
+      - redis_dev_data:/data
+    
+    ports:
+      - "6380:6379"  # Different port to avoid conflicts
+    
+    networks:
+      - connector_dev_network
+
+  # Test runner service
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: testing
+    container_name: connector-test-runner
+    environment:
+      - CONNECTOR_ENVIRONMENT=testing
+      - CONNECTOR_DATABASE_URL=sqlite:///memory:
+    
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./test-results:/app/test-results
+    
+    networks:
+      - connector_dev_network
+    
+    profiles:
+      - testing
+
+# Development volumes
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+
+# Development network
+networks:
+  connector_dev_network:
+    driver: bridge

@@ -4,6 +4,9 @@ import asyncio
 import signal
 import sys
 from pathlib import Path
+from aiohttp import web, web_runner
+import json
+from datetime import datetime, timezone
 
 from .config.settings import get_settings
 from .utils.logging import setup_logging, get_logger
@@ -17,6 +20,8 @@ class FileConnectorApp:
         self.settings = get_settings()
         self.logger = get_logger("FileConnector")
         self.running = False
+        self.web_app = None
+        self.web_runner = None
         
     async def startup(self):
         """Application startup."""
@@ -31,6 +36,9 @@ class FileConnectorApp:
         Path("./logs").mkdir(exist_ok=True)
         Path("./secrets").mkdir(exist_ok=True)
         
+        # Initialize web server for health checks and metrics
+        await self._setup_web_server()
+        
         # TODO: Initialize database
         # TODO: Initialize API clients
         # TODO: Initialize scheduler
@@ -42,6 +50,9 @@ class FileConnectorApp:
         """Application shutdown."""
         self.logger.info("Shutting down File Connector")
         self.running = False
+        
+        # Stop web server
+        await self._stop_web_server()
         
         # TODO: Stop scheduler
         # TODO: Close database connections
@@ -63,6 +74,83 @@ class FileConnectorApp:
             self.logger.info("Received shutdown signal")
         finally:
             await self.shutdown()
+    
+    async def _setup_web_server(self):
+        """Set up web server for health checks and metrics."""
+        self.web_app = web.Application()
+        
+        # Add routes
+        self.web_app.router.add_get('/health', self._health_handler)
+        self.web_app.router.add_get('/metrics', self._metrics_handler)
+        self.web_app.router.add_get('/status', self._status_handler)
+        
+        # Start web server
+        self.web_runner = web_runner.AppRunner(self.web_app)
+        await self.web_runner.setup()
+        
+        site = web_runner.TCPSite(self.web_runner, '0.0.0.0', 8080)
+        await site.start()
+        
+        self.logger.info("Web server started on http://0.0.0.0:8080")
+    
+    async def _stop_web_server(self):
+        """Stop web server."""
+        if self.web_runner:
+            await self.web_runner.cleanup()
+            self.logger.info("Web server stopped")
+    
+    async def _health_handler(self, request):
+        """Health check endpoint."""
+        health_data = {
+            "status": "healthy" if self.running else "unhealthy",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "version": self.settings.version,
+            "environment": self.settings.environment,
+            "uptime_seconds": 0  # TODO: Calculate actual uptime
+        }
+        
+        status_code = 200 if self.running else 503
+        return web.json_response(health_data, status=status_code)
+    
+    async def _metrics_handler(self, request):
+        """Metrics endpoint for Prometheus."""
+        # TODO: Implement actual metrics collection
+        metrics_data = {
+            "connector_info": {
+                "version": self.settings.version,
+                "environment": self.settings.environment
+            },
+            "sync_stats": {
+                "total_syncs": 0,
+                "successful_syncs": 0,
+                "failed_syncs": 0
+            },
+            "performance_stats": {
+                "avg_sync_duration": 0,
+                "files_processed": 0
+            }
+        }
+        
+        return web.json_response(metrics_data)
+    
+    async def _status_handler(self, request):
+        """Detailed status endpoint."""
+        status_data = {
+            "application": {
+                "name": "File Connector",
+                "version": self.settings.version,
+                "environment": self.settings.environment,
+                "running": self.running,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            },
+            "components": {
+                "database": "unknown",  # TODO: Check database health
+                "scheduler": "unknown",  # TODO: Check scheduler health
+                "api_clients": "unknown"  # TODO: Check API client health
+            }
+        }
+        
+        return web.json_response(status_data)
 
 
 def setup_signal_handlers(app: FileConnectorApp):
