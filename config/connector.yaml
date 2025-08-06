@@ -1,0 +1,85 @@
+version: "1.0.0"
+environment: "development"
+
+# Global scheduling configuration
+scheduling:
+  default_schedule: "interval"
+  default_interval_minutes: 5
+  max_concurrent_syncs: 10
+  sync_timeout_minutes: 30
+  max_retries: 3
+  retry_delay_seconds: 30
+  rate_limit_backoff_seconds: 60
+  max_files_per_sync: 1000
+  batch_size: 50
+
+# Logging configuration
+log_level: "INFO"
+log_format: "json"
+
+# Security and monitoring
+require_https: true
+webhook_timeout_seconds: 30
+health_check_interval_minutes: 5
+metrics_enabled: true
+
+# Sync endpoints configuration
+endpoints:
+  # Google Drive endpoint (commented out for now)
+  # - name: "Engineering Documents"
+  #   endpoint_type: "google_drive"
+  #   project_id: "engineering_docs"
+  #   user_id: "engineering@company.com"
+  #   description: "Engineering documentation and drawings"
+  #   
+  #   # Google Drive specific configuration
+  #   endpoint_details:
+  #     credentials_path: "./credentials/google-service-account.json"
+  #     include_shared: true
+  #     file_types: ["pdf", "dwg", "docx", "xlsx"]
+  #     max_file_size_mb: 100
+  #     exclude_patterns: ["*temp*", "*backup*"]
+  #   
+  #   # Sync schedule
+  #   schedule: "interval"
+  #   schedule_config:
+  #     interval_minutes: 5
+  #   
+  #   # File filtering
+  #   max_files_per_sync: 500
+  #   
+  #   # Status
+  #   is_active: true
+  #   tags: ["engineering", "documentation"]
+
+  # Autodesk Construction Cloud endpoint
+  - name: "Construction Project"
+    endpoint_type: "autodesk_construction_cloud"
+    project_id: "construction_project_2024"
+    user_id: "construction@company.com"
+    description: "Construction project files and BIM models"
+    
+    # Autodesk specific configuration
+    endpoint_details:
+      client_id: "${CONNECTOR_AUTODESK_CLIENT_ID}"
+      client_secret: "${CONNECTOR_AUTODESK_CLIENT_SECRET}"
+      project_id: "b.project_id_here"  # Replace with actual Autodesk project ID
+      include_subfolders: true
+      file_types: ["rvt", "dwg", "ifc", "nwd"]
+      include_versions: false
+    
+    # Sync schedule - business hours only
+    schedule: "business_hours"
+    schedule_config:
+      start_hour: 9
+      end_hour: 17
+      weekdays_only: true
+      interval_minutes: 30
+      timezone: "America/New_York"
+    
+    # File filtering
+    max_files_per_sync: 200
+    
+    # Status
+    is_active: true
+    tags: ["construction", "bim", "cad"]

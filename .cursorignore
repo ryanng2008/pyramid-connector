@@ -1,0 +1,6 @@
+# Cursor ignore file
+# Files listed here will be excluded from Cursor's edit protection
+# This allows editing of sensitive files while maintaining .gitignore protection
+
+!.env
+!env.development
