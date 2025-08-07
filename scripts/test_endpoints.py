@@ -37,8 +37,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from connector.api_clients import APIClientFactory
 from connector.api_clients.base import BaseAPIClient, AuthenticationError, APIConnectionError
-from connector.config.loader import ConfigurationLoader
-from connector.config.settings import load_settings
+from connector.config.loader import ConfigLoader
+from connector.config.settings import get_settings
 from connector.utils.logging import setup_logging, get_logger
 
 
@@ -126,7 +126,8 @@ class EndpointTester:
             files = []
             
             # Get a small sample of files
-            async for file_metadata in client.list_files(max_results=max_files):
+            file_iterator = await client.list_files(max_results=max_files)
+            async for file_metadata in file_iterator:
                 files.append({
                     'title': file_metadata.title,
                     'date_updated': file_metadata.date_updated,
@@ -185,43 +186,44 @@ class EndpointTester:
             "overall_success": False
         }
         
+        # Create API client
+        endpoint_details = endpoint_config.get('endpoint_details', {})
+        client = APIClientFactory.create_client(endpoint_type, endpoint_details)
+        
         try:
-            # Create API client
-            endpoint_details = endpoint_config.get('endpoint_details', {})
-            client = APIClientFactory.create_client(endpoint_type, endpoint_details)
+            async with client:
+                # Test authentication
+                auth_success = await self.test_endpoint_authentication(client, endpoint_name)
+                result["authentication"]["success"] = auth_success
             
-            # Test authentication
-            auth_success = await self.test_endpoint_authentication(client, endpoint_name)
-            result["authentication"]["success"] = auth_success
-            
-            if not auth_success:
-                result["authentication"]["error"] = "Authentication failed"
-                return result
-            
-            if not auth_only:
-                # Test file listing
-                file_success, files = await self.test_endpoint_file_listing(
-                    client, endpoint_name, max_files
-                )
-                result["file_listing"]["success"] = file_success
-                result["file_listing"]["files_found"] = len(files)
+                if not auth_success:
+                    result["authentication"]["error"] = "Authentication failed"
+                    return result
                 
-                if file_success:
-                    self._print_files(files)
+                if not auth_only:
+                    # Test file listing
+                    file_success, files = await self.test_endpoint_file_listing(
+                        client, endpoint_name, max_files
+                    )
+                    result["file_listing"]["success"] = file_success
+                    result["file_listing"]["files_found"] = len(files)
+                    
+                    if file_success:
+                        self._print_files(files)
+                    else:
+                        result["file_listing"]["error"] = "File listing failed"
+                    
+                    # Test health check
+                    health_success = await self.test_endpoint_health(client, endpoint_name)
+                    result["health_check"]["success"] = health_success
+                    
+                    if not health_success:
+                        result["health_check"]["error"] = "Health check failed"
+                
+                    # Overall success
+                    result["overall_success"] = auth_success and file_success and health_success
                 else:
-                    result["file_listing"]["error"] = "File listing failed"
-                
-                # Test health check
-                health_success = await self.test_endpoint_health(client, endpoint_name)
-                result["health_check"]["success"] = health_success
-                
-                if not health_success:
-                    result["health_check"]["error"] = "Health check failed"
-                
-                # Overall success
-                result["overall_success"] = auth_success and file_success and health_success
-            else:
-                result["overall_success"] = auth_success
+                    result["overall_success"] = auth_success
             
         except Exception as e:
             error_msg = f"Endpoint test failed: {e}"
@@ -259,8 +261,8 @@ class EndpointTester:
                 ]
             else:
                 # Load YAML connector configuration
-                config_loader = ConfigurationLoader()
-                config = config_loader.load_configuration(config_file)
+                config_loader = ConfigLoader()
+                config = config_loader.load_from_file(config_file)
                 endpoints = [
                     ep for ep in config.endpoints 
                     if ep.is_active and (not endpoint_type_filter or ep.endpoint_type.value == endpoint_type_filter)
@@ -413,11 +415,11 @@ Examples:
     
     # Setup logging
     log_level = "ERROR" if args.quiet else ("DEBUG" if args.verbose else "WARNING")
-    setup_logging(level=log_level, format_type="console")
+    setup_logging(log_level=log_level, log_format="console")
     
     # Load environment settings
     try:
-        load_settings()
+                    get_settings()
     except Exception as e:
         print(f"❌ Error loading settings: {e}")
         print("   Make sure your .env file is configured correctly")

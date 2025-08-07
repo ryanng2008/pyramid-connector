@@ -103,7 +103,8 @@ class BaseAPIClient(ABC):
             
             # Try to list a small number of files as a health check
             file_count = 0
-            async for _ in self.list_files(max_results=1):
+            file_iterator = await self.list_files(max_results=1)
+            async for _ in file_iterator:
                 file_count += 1
                 break
             
