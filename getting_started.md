@@ -267,6 +267,28 @@ CONNECTOR_DATABASE_URL=postgresql://connector:password@postgres:5432/connector_d
 
 ## Testing Endpoints
 
+### Autodesk OAuth Setup (First Time Only)
+
+For Autodesk Construction Cloud, you need to complete the OAuth setup first:
+
+1. **Configure Redirect URI in APS Portal:**
+   - Go to https://aps.autodesk.com/
+   - Find your application and add redirect URI: `http://localhost:8080/oauth/callback`
+
+2. **Test OAuth Flow:**
+   ```bash
+   # Test the OAuth authentication
+   python scripts/test_oauth.py
+   ```
+   
+   If you get a redirect URI error, see `OAUTH_SETUP.md` for manual setup instructions.
+
+3. **Manual Token Setup (if needed):**
+   ```bash
+   # If automatic OAuth doesn't work, use manual method
+   python scripts/manual_token_exchange.py <authorization_code>
+   ```
+
 ### Quick Endpoint Test
 
 Use the provided test script to verify your endpoints are configured correctly:

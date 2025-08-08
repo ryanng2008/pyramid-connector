@@ -1,6 +1,7 @@
 """High-level database service layer."""
 
 from datetime import datetime, timedelta
+from dataclasses import dataclass
 from typing import List, Optional, Dict, Any, Tuple
 from contextlib import contextmanager
 
@@ -11,6 +12,7 @@ from .operations import (
     get_sync_log_repository
 )
 from .models import (
+    EndpointModel, SyncLogModel,
     EndpointCreate, EndpointUpdate, EndpointResponse,
     FileCreate, FileResponse,
     SyncLogCreate, SyncLogUpdate, SyncLogResponse,
@@ -52,6 +54,80 @@ class DatabaseService:
             repo = get_endpoint_repository(session)
             endpoint = repo.get_by_id(endpoint_id)
             return EndpointResponse.from_orm(endpoint) if endpoint else None
+
+    # --- Compatibility layer used by core/scheduler/sync_engine ---
+    @dataclass
+    class EndpointView:
+        id: int
+        endpoint_type: EndpointType
+        endpoint_details: Dict[str, Any]
+        project_id: str
+        user_id: str
+        is_active: bool
+        description: Optional[str]
+        created_at: datetime
+        updated_at: datetime
+        last_sync_at: Optional[datetime] = None
+
+    def _to_view(self, model: EndpointModel) -> "DatabaseService.EndpointView":
+        return DatabaseService.EndpointView(
+            id=model.id,
+            endpoint_type=EndpointType(model.endpoint_type) if not isinstance(model.endpoint_type, EndpointType) else model.endpoint_type,
+            endpoint_details=model.endpoint_details or {},
+            project_id=model.project_id,
+            user_id=model.user_id,
+            is_active=bool(model.enabled),
+            description=model.description,
+            created_at=model.created_at,
+            updated_at=model.updated_at,
+            last_sync_at=model.last_sync_at,
+        )
+
+    @log_execution_time
+    def get_endpoint_by_id(self, endpoint_id: int) -> Optional["DatabaseService.EndpointView"]:
+        """Get endpoint view by ID (Enum type, is_active flag)."""
+        with self.transaction() as session:
+            repo = get_endpoint_repository(session)
+            m = repo.get_by_id(endpoint_id)
+            return self._to_view(m) if m else None
+
+    @log_execution_time
+    def get_endpoints(
+        self,
+        is_active: Optional[bool] = None,
+        endpoint_type: Optional[EndpointType] = None,
+        project_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> List["DatabaseService.EndpointView"]:
+        """Query endpoints and return normalized views for application use."""
+        with self.transaction() as session:
+            from sqlalchemy import and_
+            repo = get_endpoint_repository(session)
+            # Start from base query via session for flexibility
+            q = session.query(EndpointModel)
+            filters = []
+            if is_active is not None:
+                filters.append(EndpointModel.enabled == bool(is_active))
+            if endpoint_type is not None:
+                filters.append(EndpointModel.endpoint_type == endpoint_type.value)
+            if project_id is not None:
+                filters.append(EndpointModel.project_id == project_id)
+            if user_id is not None:
+                filters.append(EndpointModel.user_id == user_id)
+            if filters:
+                q = q.filter(and_(*filters))
+            models = q.order_by(EndpointModel.created_at).all()
+            return [self._to_view(m) for m in models]
+
+    @log_execution_time
+    def update_endpoint_sync_time(self, endpoint_id: int) -> bool:
+        """Mark endpoint as synced now (COMPLETED)."""
+        with self.transaction() as session:
+            repo = get_endpoint_repository(session)
+            success = repo.update_sync_status(endpoint_id, SyncStatus.COMPLETED)
+            if success:
+                session.commit()
+            return success
     
     @log_execution_time
     def get_all_endpoints(self, enabled_only: bool = True) -> List[EndpointResponse]:
@@ -247,6 +323,36 @@ class DatabaseService:
                 return True
             
             return False
+
+    # Logging helper used by SyncEngine
+    @log_execution_time
+    def log_sync_operation(
+        self,
+        endpoint_id: int,
+        status: SyncStatus,
+        files_processed: int,
+        files_added: int,
+        files_updated: int,
+        error_message: Optional[str] = None,
+        sync_duration: Optional[float] = None,
+    ) -> int:
+        """Create a sync log entry with provided summary fields."""
+        with self.transaction() as session:
+            repo = get_sync_log_repository(session)
+            log = repo.create(SyncLogCreate(endpoint_id=endpoint_id))
+            update = SyncLogUpdate(
+                sync_completed_at=datetime.utcnow(),
+                sync_status=status,
+                files_found=files_processed,
+                files_new=files_added,
+                files_updated=files_updated,
+                files_skipped=max(0, files_processed - (files_added + files_updated)),
+                files_error=0,
+                error_message=error_message,
+            )
+            repo.update(log.id, update)
+            session.commit()
+            return log.id
     
     @log_execution_time
     def get_sync_history(self, endpoint_id: int, limit: int = 10) -> List[SyncLogResponse]:
@@ -271,7 +377,7 @@ class DatabaseService:
         """Get overall database statistics."""
         with self.transaction() as session:
             from sqlalchemy import func, and_
-            from .models import EndpointModel, FileModel, SyncLogModel
+            from .models import EndpointModel, FileModel
             
             stats = {}
             

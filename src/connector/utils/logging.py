@@ -10,20 +10,15 @@ import structlog
 import colorlog
 from structlog.typing import Processor
 
-from ..config.settings import get_settings
-
-
 def setup_logging(
     log_level: Optional[str] = None,
     log_format: Optional[str] = None,
     log_file: Optional[str] = None
 ) -> None:
     """Set up logging configuration."""
-    settings = get_settings()
-    
-    level = log_level or settings.logging.level
-    format_type = log_format or settings.logging.format
-    file_path = log_file or settings.logging.file_path
+    level = log_level or "INFO"
+    format_type = log_format or "console"
+    file_path = log_file or "./logs/connector.log"
     
     # Configure standard library logging
     logging.basicConfig(level=getattr(logging, level.upper()))

@@ -49,6 +49,7 @@ class DatabaseManager:
         self.SessionLocal = sessionmaker(
             autocommit=False,
             autoflush=False,
+            expire_on_commit=False,
             bind=self.engine
         )
         

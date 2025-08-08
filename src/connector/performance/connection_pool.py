@@ -136,8 +136,7 @@ class ConnectionPoolManager:
             keepalive_timeout=self.keepalive_timeout,
             enable_cleanup_closed=self.enable_cleanup_closed,
             use_dns_cache=True,
-            ttl_dns_cache=300,  # 5 minutes DNS cache
-            limit_per_host=self.max_connections_per_host
+            ttl_dns_cache=300  # 5 minutes DNS cache
         )
         
         # Create timeout configuration

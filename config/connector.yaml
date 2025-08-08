@@ -53,33 +53,29 @@ endpoints:
   #   tags: ["engineering", "documentation"]
 
   # Autodesk Construction Cloud endpoint
-  - name: "Construction Project"
+  - name: "Project 0001"
     endpoint_type: "autodesk_construction_cloud"
-    project_id: "construction_project_2024"
-    user_id: "construction@company.com"
-    description: "Construction project files and BIM models"
+    project_id: "project_0001"
+    user_id: "admin"
+    description: "Autodesk Construction Cloud Project 0001"
     
     # Autodesk specific configuration
     endpoint_details:
       client_id: "${CONNECTOR_AUTODESK_CLIENT_ID}"
       client_secret: "${CONNECTOR_AUTODESK_CLIENT_SECRET}"
-      project_id: "b.project_id_here"  # Replace with actual Autodesk project ID
+      project_id: "b.6c2cffb0-e8c8-43d3-b415-e53f4377cedb"  # Your Autodesk project ID with b. prefix
       include_subfolders: true
-      file_types: ["rvt", "dwg", "ifc", "nwd"]
-      include_versions: false
+      file_types: ["rvt", "dwg", "ifc", "nwd", "pdf"]
+      include_versions: true
     
-    # Sync schedule - business hours only
-    schedule: "business_hours"
+    # Sync schedule
+    schedule: "interval"
     schedule_config:
-      start_hour: 9
-      end_hour: 17
-      weekdays_only: true
-      interval_minutes: 30
-      timezone: "America/New_York"
+      interval_minutes: 5
     
     # File filtering
-    max_files_per_sync: 200
+    max_files_per_sync: 1000
     
     # Status
     is_active: true
-    tags: ["construction", "bim", "cad"]
+    tags: ["project_0001"]

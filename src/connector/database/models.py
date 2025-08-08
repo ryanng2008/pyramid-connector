@@ -40,6 +40,7 @@ class EndpointModel(Base):
     endpoint_details = Column(JSON, nullable=False)
     project_id = Column(String(100), nullable=False, index=True)
     user_id = Column(String(100), nullable=False, index=True)
+    description = Column(String(500), nullable=True)
     schedule_cron = Column(String(50), nullable=False)
     enabled = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

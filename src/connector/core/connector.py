@@ -367,7 +367,8 @@ class FileConnector:
         
         try:
             # Check database connectivity
-            health["database"] = self.db_service.database_manager.test_connection()
+            # Use the correct attribute name from DatabaseService
+            health["database"] = self.db_service.db_manager.test_connection()
             if not health["database"]:
                 health["issues"].append("Database connection failed")
                 health["status"] = "degraded"

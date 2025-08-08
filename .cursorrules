@@ -1,9 +1,14 @@
-You are to build this new project. The project, and your tasks step-by-step are outlined in ACTIONITEMS.md. Complete them individually. You may update the task item and description as you do the task: for example, if you encounter roadblocks, note them under the task item. If there are insurmountable roadblocks, note down in cursorlog.md and stop. After completing a task, move it from ACTIONITEMS.md to ACTIONITEMS_DONE.md.
+# Cursor command denylist
+# Format: DENY command_name [reason]
 
-Log all your changes in cursorlog.md. Upon completing a task, write a bullet point summary of what you built in cursorlog.md under the Agent Work Summary heading. If there is anything you chose to include as the action list was insufficient, note it in cursorlog.md as well.
+# Deny potentially dangerous system commands
+DENY rm -rf /* Dangerous recursive deletion
+DENY sudo Elevated privileges not needed
+DENY chmod 777 Overly permissive file permissions
+DENY docker system prune -a Dangerous container cleanup
 
-After every successful change you make — that is undoubtedly successful — commit to git. After you commit, and log changes in cursorlog, IMMEDIATELY MOVE ON to the next task WITHOUT ASKING.
+# Deny sensitive operations
+DENY git push --force Force pushing can overwrite history
+DENY git reset --hard Destructive git operation
 
-When you commit the frontend, make sure the apiConfig.ts uses the PRODUCTION url.
-
-On the frontend, reuse components where possible so improving UI is easy.
+# Add more denied commands as needed

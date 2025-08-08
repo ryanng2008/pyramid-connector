@@ -266,24 +266,7 @@ class AutodeskConstructionCloudClient(BaseAPIClient):
             self.logger.error("Error during file listing", error=str(e))
             raise
 
-    class FileListIterator:
-        """Helper class to implement async iterator protocol."""
-        def __init__(self, client, since=None, max_results=None):
-            self.client = client
-            self.since = since
-            self.max_results = max_results
-            self._impl = None
 
-        def __aiter__(self):
-            return self
-
-        async def __anext__(self):
-            if not self._impl:
-                self._impl = self.client._list_files_impl(since=self.since, max_results=self.max_results)
-            try:
-                return await self._impl.__anext__()
-            except StopAsyncIteration:
-                raise
 
     @log_async_execution_time
     async def list_files(
@@ -297,10 +280,11 @@ class AutodeskConstructionCloudClient(BaseAPIClient):
             since: Only return files modified after this datetime
             max_results: Maximum number of files to return
             
-        Returns:
-            Async iterator yielding FileMetadata objects
+        Yields:
+            FileMetadata objects for each file found
         """
-        return self.FileListIterator(self, since=since, max_results=max_results)
+        async for file_metadata in self._list_files_impl(since=since, max_results=max_results):
+            yield file_metadata
     
     @log_async_execution_time
     async def get_file_metadata(self, file_id: str) -> Optional[FileMetadata]:
@@ -348,21 +332,20 @@ class AutodeskConstructionCloudClient(BaseAPIClient):
         attributes = item_data.get("attributes", {})
         
         return FileMetadata(
-            title=attributes.get("displayName") or attributes.get("name"),
-            path=self._get_file_path(item_data),
-            external_id=item_data.get("id"),
-            date_created=self._parse_timestamp(attributes.get("createTime")),
-            date_updated=self._parse_timestamp(attributes.get("lastModifiedTime")),
-            size_bytes=attributes.get("size"),
-            mime_type=attributes.get("contentType"),
-            download_url=self._get_download_link(item_data),
-            parent_folder_id=self._get_parent_folder_id(item_data),
-            metadata={
+            external_file_id=item_data.get("id"),
+            file_name=attributes.get("displayName") or attributes.get("name") or item_data.get("id"),
+            file_path=self._get_file_path(item_data),
+            file_link=self._get_download_link(item_data),
+            file_size=attributes.get("size"),
+            file_type=attributes.get("contentType") or attributes.get("fileType"),
+            external_created_at=self._parse_timestamp(attributes.get("createTime")),
+            external_updated_at=self._parse_timestamp(attributes.get("lastModifiedTime")),
+            file_metadata={
                 "version": attributes.get("versionNumber"),
                 "creator": attributes.get("createdBy"),
                 "last_modifier": attributes.get("lastModifiedBy"),
-                "file_type": attributes.get("fileType"),
-                "status": attributes.get("status")
+                "status": attributes.get("status"),
+                "parent_folder_id": self._get_parent_folder_id(item_data)
             }
         )
     

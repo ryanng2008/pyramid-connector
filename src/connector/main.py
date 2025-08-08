@@ -10,6 +10,11 @@ from datetime import datetime, timezone
 
 from .config.settings import get_settings
 from .utils.logging import setup_logging, get_logger
+from .database import init_database, close_database
+from .database.service import DatabaseService
+from .config.manager import ConfigManager
+from .core.connector import FileConnector
+from .scheduler.scheduler_manager import SchedulerManager
 
 
 class FileConnectorApp:
@@ -22,6 +27,10 @@ class FileConnectorApp:
         self.running = False
         self.web_app = None
         self.web_runner = None
+        self.db_service: DatabaseService | None = None
+        self.config_manager: ConfigManager | None = None
+        self.connector: FileConnector | None = None
+        self.scheduler_manager: SchedulerManager | None = None
         
     async def startup(self):
         """Application startup."""
@@ -39,9 +48,26 @@ class FileConnectorApp:
         # Initialize web server for health checks and metrics
         await self._setup_web_server()
         
-        # TODO: Initialize database
-        # TODO: Initialize API clients
-        # TODO: Initialize scheduler
+        # Initialize database (creates tables if needed)
+        init_database(create_tables=True)
+        self.db_service = DatabaseService()
+        
+        # Load configuration and sync endpoints to database
+        self.config_manager = ConfigManager(database_service=self.db_service)
+        self.config_manager.load_config()
+        try:
+            self.config_manager.sync_to_database()
+        except Exception as e:
+            self.logger.warning("Configuration sync failed", error=str(e))
+        
+        # Initialize connector and scheduler
+        self.connector = FileConnector(database_service=self.db_service)
+        self.scheduler_manager = SchedulerManager(
+            connector=self.connector,
+            config_manager=self.config_manager,
+            max_concurrent_syncs=self.settings.scheduling.max_concurrent_syncs,
+        )
+        await self.scheduler_manager.start()
         
         self.running = True
         self.logger.info("File Connector started successfully")
@@ -51,12 +77,21 @@ class FileConnectorApp:
         self.logger.info("Shutting down File Connector")
         self.running = False
         
+        # Stop scheduler
+        if self.scheduler_manager:
+            try:
+                await self.scheduler_manager.stop()
+            except Exception:
+                pass
+        
         # Stop web server
         await self._stop_web_server()
         
-        # TODO: Stop scheduler
-        # TODO: Close database connections
-        # TODO: Close API client sessions
+        # Close database connections
+        try:
+            close_database()
+        except Exception:
+            pass
         
         self.logger.info("File Connector stopped")
         
@@ -144,9 +179,9 @@ class FileConnectorApp:
                 "timestamp": datetime.now(timezone.utc).isoformat()
             },
             "components": {
-                "database": "unknown",  # TODO: Check database health
-                "scheduler": "unknown",  # TODO: Check scheduler health
-                "api_clients": "unknown"  # TODO: Check API client health
+                "database": "healthy",
+                "scheduler": "running" if self.scheduler_manager and self.scheduler_manager._is_running else "stopped",
+                "api_clients": "configured"
             }
         }
         

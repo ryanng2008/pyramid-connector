@@ -116,7 +116,7 @@ class ConfigManager:
                             is_active=endpoint_config.is_active
                         )
                         
-                        self.db_service.update_endpoint(existing_endpoint.id, update_data.dict(exclude_unset=True))
+                        self.db_service.update_endpoint(existing_endpoint.id, update_data)
                         stats["endpoints_updated"] += 1
                         
                         self.logger.info(
