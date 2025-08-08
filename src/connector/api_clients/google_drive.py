@@ -15,7 +15,6 @@ import google.auth.exceptions
 
 from .base import BaseAPIClient, FileMetadata, RateLimitError, AuthenticationError, APIConnectionError
 from ..utils.logging import log_async_execution_time
-from ..performance import get_metrics_collector, get_concurrent_executor, AsyncRateLimiter
 
 
 class GoogleDriveClient(BaseAPIClient):
@@ -34,12 +33,7 @@ class GoogleDriveClient(BaseAPIClient):
         self.service = None
         self.credentials = None
         
-        # Performance optimization components
-        self.metrics = get_metrics_collector()
-        self.rate_limiter = AsyncRateLimiter(
-            max_calls=endpoint_details.get("rate_limit_calls", 100),
-            time_window=endpoint_details.get("rate_limit_window", 100.0)  # 100 calls per 100 seconds
-        )
+
         
         # Configuration from endpoint_details
         self.folder_id = endpoint_details.get("folder_id")  # None = root folder
@@ -154,33 +148,24 @@ class GoogleDriveClient(BaseAPIClient):
                     int(target_max - files_returned)
                 )
                 
-                # Execute API request with rate limiting and metrics
-                async with self.rate_limiter.limit():
-                    async with self.metrics.time_operation(
-                        "google_drive.api_request",
-                        tags={"operation": "list_files", "page_size": str(page_size)}
-                    ):
-                        request = self.service.files().list(
-                            q=query,
-                            fields=(
-                                "nextPageToken, files(id, name, parents, webViewLink, "
-                                "size, mimeType, createdTime, modifiedTime, ownedByMe, "
-                                "shared, permissions, thumbnailLink, exportLinks)"
-                            ),
-                            pageSize=page_size,
-                            pageToken=page_token,
-                            includeItemsFromAllDrives=self.include_shared,
-                            supportsAllDrives=self.include_shared
-                        )
-                        
-                        # Run in thread pool to avoid blocking
-                        result = await asyncio.get_event_loop().run_in_executor(
-                            None, self._execute_request, request
-                        )
+                # Execute API request
+                request = self.service.files().list(
+                    q=query,
+                    fields=(
+                        "nextPageToken, files(id, name, parents, webViewLink, "
+                        "size, mimeType, createdTime, modifiedTime, ownedByMe, "
+                        "shared, permissions, thumbnailLink, exportLinks)"
+                    ),
+                    pageSize=page_size,
+                    pageToken=page_token,
+                    includeItemsFromAllDrives=self.include_shared,
+                    supportsAllDrives=self.include_shared
+                )
                 
-                # Record API call metrics
-                self.metrics.increment_counter("google_drive.api_calls")
-                self.metrics.record_value("google_drive.files_per_page", len(result.get("files", [])))
+                # Run in thread pool to avoid blocking
+                result = await asyncio.get_event_loop().run_in_executor(
+                    None, self._execute_request, request
+                )
                 
                 files = result.get("files", [])
                 page_token = result.get("nextPageToken")

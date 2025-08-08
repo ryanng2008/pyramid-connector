@@ -101,8 +101,7 @@ class FileConnectorApp:
         
         try:
             while self.running:
-                # Main application loop
-                # TODO: This will be replaced with the scheduler
+                # Keep application running while scheduler handles sync jobs
                 await asyncio.sleep(1)
                 
         except KeyboardInterrupt:
@@ -111,12 +110,11 @@ class FileConnectorApp:
             await self.shutdown()
     
     async def _setup_web_server(self):
-        """Set up web server for health checks and metrics."""
+        """Set up web server for health checks and status."""
         self.web_app = web.Application()
         
         # Add routes
         self.web_app.router.add_get('/health', self._health_handler)
-        self.web_app.router.add_get('/metrics', self._metrics_handler)
         self.web_app.router.add_get('/status', self._status_handler)
         
         # Start web server
@@ -141,32 +139,13 @@ class FileConnectorApp:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "version": self.settings.version,
             "environment": self.settings.environment,
-            "uptime_seconds": 0  # TODO: Calculate actual uptime
+            "uptime_seconds": 0
         }
         
         status_code = 200 if self.running else 503
         return web.json_response(health_data, status=status_code)
     
-    async def _metrics_handler(self, request):
-        """Metrics endpoint for Prometheus."""
-        # TODO: Implement actual metrics collection
-        metrics_data = {
-            "connector_info": {
-                "version": self.settings.version,
-                "environment": self.settings.environment
-            },
-            "sync_stats": {
-                "total_syncs": 0,
-                "successful_syncs": 0,
-                "failed_syncs": 0
-            },
-            "performance_stats": {
-                "avg_sync_duration": 0,
-                "files_processed": 0
-            }
-        }
-        
-        return web.json_response(metrics_data)
+
     
     async def _status_handler(self, request):
         """Detailed status endpoint."""

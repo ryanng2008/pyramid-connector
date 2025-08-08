@@ -69,3 +69,11 @@ docker-compose.override.yml
 *.key
 client_secret.json
 service_account.json
+
+#configs
+ACTIONITEMS_DONE.md
+ACTIONITEMS.md
+cursorlog.md
+.cursorrules
+.cursorrulesAGENT
+.cursorignore

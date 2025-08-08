@@ -10,12 +10,6 @@ from ..api_clients.base import RateLimitError, AuthenticationError, APIConnectio
 from ..database import DatabaseService, EndpointModel, EndpointType, SyncStatus
 from ..database.models import FileCreate
 from ..utils.logging import get_logger, log_async_execution_time
-from ..performance import (
-    get_metrics_collector,
-    get_batch_processor,
-    get_concurrent_executor,
-    AsyncCircuitBreaker
-)
 
 
 @dataclass
@@ -68,26 +62,13 @@ class SyncEngine:
         self.db_service = database_service
         self.logger = get_logger(self.__class__.__name__)
         
-        # Performance optimization components
-        self.metrics = get_metrics_collector()
-        self.batch_processor = get_batch_processor()
-        self.executor = get_concurrent_executor(
-            max_concurrent=10,
-            rate_limit_calls=100,
-            rate_limit_window=60.0
-        )
-        
-        # Circuit breakers per endpoint type
-        self.circuit_breakers = {}
-        
         # Configuration
         self.max_retries = 3
         self.retry_delay = 30  # seconds
         self.rate_limit_backoff = 60  # seconds
         self.max_files_per_sync = 1000
-        self.batch_size = 50  # Files to process in each batch
         
-        self.logger.info("Sync engine initialized with performance optimizations")
+        self.logger.info("Sync engine initialized")
     
     @log_async_execution_time
     async def sync_endpoint(

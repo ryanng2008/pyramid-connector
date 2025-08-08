@@ -1,8 +1,0 @@
-# Kubernetes namespace for File Connector
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: file-connector
-  labels:
-    app: file-connector
-    environment: production

@@ -1,363 +1,278 @@
 # File Connector
 
-A high-performance, cloud-native file synchronization system that automatically discovers, extracts, and synchronizes file metadata from multiple cloud storage platforms (Google Drive, Autodesk Construction Cloud) to a centralized database.
+A Python-based file synchronization connector that fetches files from external APIs (Autodesk Construction Cloud, Google Drive) and stores metadata in a database. Files are synced on a configurable schedule.
 
-## Overview
+## 🚀 Quick Start
 
-The File Connector is an enterprise-grade Python application designed to periodically fetch file metadata from various cloud APIs and maintain a synchronized view in a database. It operates as a scheduled service that can run in containers, Kubernetes, or traditional server environments.
+### Development Setup
 
-### How It Works
+1. **Prerequisites**
+   ```bash
+   python 3.9+
+   pip
+   ```
 
-The File Connector operates through a sophisticated pipeline that orchestrates file discovery, metadata extraction, and database synchronization:
+2. **Install Dependencies**
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
 
+3. **Configure Environment**
+   ```bash
+   cp env.example .env
+   cp config/connector.example.yaml config/connector.yaml
+   ```
+
+4. **Set API Credentials**
+   Edit `.env` with your API credentials:
+   ```bash
+   # Autodesk Construction Cloud
+   CONNECTOR_AUTODESK_CLIENT_ID=your_client_id
+   CONNECTOR_AUTODESK_CLIENT_SECRET=your_client_secret
+   
+   # Google Drive (optional)
+   GOOGLE_CREDENTIALS_PATH=./credentials/google-service-account.json
+   ```
+
+5. **Launch in Development**
+   ```bash
+   python -m src.connector.main
+   ```
+   
+   The application will start on `http://localhost:8080`
+   - Health: `GET /health`
+   - Status: `GET /status`
+
+## 🔧 How It Works
+
+### Architecture Overview
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   API Sources   │───▶│  File Connector  │───▶│    Database     │
-│                 │    │     Pipeline     │    │   (Metadata)    │
-│ • Google Drive  │    │                  │    │ • Files        │
-│ • Autodesk CC   │    │ ┌──────────────┐ │    │ • Endpoints    │
-│ • [Extensible]  │    │ │ Sync Engine  │ │    │ • Sync Logs    │
-└─────────────────┘    │ └──────────────┘ │    └─────────────────┘
-                       │ ┌──────────────┐ │
-                       │ │  Scheduler   │ │
-                       │ └──────────────┘ │
-                       │ ┌──────────────┐ │
-                       │ │ Performance  │ │
-                       │ │ Monitoring   │ │
-                       │ └──────────────┘ │
-                       └──────────────────┘
+│   API Clients   │───▶│   Sync Engine    │───▶│    Database     │
+│ (Autodesk/GDrive)│    │                  │    │   (SQLite)      │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         │              ┌─────────────────┐              │
+         └──────────────│   Scheduler     │──────────────┘
+                        │ (Every 5 mins)  │
+                        └─────────────────┘
 ```
 
-## Core Features
+### Endpoint Fetching
 
-### 🔄 **Automated File Synchronization**
-- **Periodic Discovery**: Automatically discovers files from configured cloud storage endpoints every 5 minutes (configurable)
-- **Incremental Sync**: Uses timestamp-based filtering to only process new or modified files, avoiding duplicates
-- **Deduplication**: Intelligent handling of file updates using external file IDs and modification timestamps
-- **Batch Processing**: Efficiently processes large file sets using configurable batch sizes (default: 50 files)
+**Where:** `src/connector/api_clients/`
+- `autodesk.py` - Autodesk Construction Cloud API client
+- `google_drive.py` - Google Drive API client
+- `factory.py` - Creates appropriate client based on endpoint type
 
-### 🚀 **Multi-Platform API Integration**
-- **Google Drive**: Service account authentication with OAuth 2.0, supports shared drives and folder-specific syncing
-- **Autodesk Construction Cloud**: OAuth 2.0 client credentials flow with project-based file access
-- **Extensible Architecture**: Plugin-based system allows easy addition of new cloud storage platforms
+**How it works:**
+1. **Authentication**: OAuth 2.0 flow with automatic token refresh
+2. **File Discovery**: API calls to list files with filters (file types, folders, date ranges)
+3. **Metadata Extraction**: Standardizes file metadata across different APIs
+4. **Rate Limiting**: Built-in delays to respect API limits
 
-### ⚡ **High-Performance Processing**
-- **Async Architecture**: Built on asyncio for concurrent API calls and non-blocking operations
-- **Connection Pooling**: HTTP connection reuse with configurable limits (100 total, 30 per host)
-- **Rate Limiting**: Automatic API rate limit handling with backoff strategies and retry logic
-- **Circuit Breakers**: Fault tolerance patterns prevent cascade failures during API outages
-- **Parallel Processing**: Multiple endpoints processed concurrently (up to 10 by default)
-
-### 📊 **Comprehensive Monitoring**
-- **Performance Metrics**: Real-time collection of timing, throughput, and error metrics
-- **System Monitoring**: CPU, memory, disk, and network usage tracking with psutil
-- **Health Endpoints**: HTTP endpoints for container orchestration health checks
-- **Structured Logging**: JSON-formatted logs with correlation IDs and performance metadata
-
-### 🕐 **Flexible Scheduling**
-- **Multiple Schedule Types**: 
-  - Interval-based (every N minutes)
-  - Cron expressions (complex schedules)
-  - Manual triggers (on-demand execution)
-- **Dynamic Configuration**: Hot-reload of endpoint configurations without restart
-- **Job Management**: Start, stop, and monitor individual sync jobs
-
-### 🛡️ **Enterprise Security**
-- **Secure Credential Management**: Environment variable and secrets-based configuration
-- **Input Validation**: Pydantic-based validation for all configuration and API inputs
-- **Non-Root Containers**: Security-hardened Docker images with minimal attack surface
-- **Audit Logging**: Comprehensive audit trail of all sync operations and changes
-
-## Pipeline Logic
-
-### 1. **Configuration Loading**
-```python
-# Load endpoint configurations from YAML/JSON
-endpoints = [
-    {
-        "type": "google_drive",
-        "name": "Engineering Files",
-        "project_id": "eng-project-001",
-        "user_id": "engineer@company.com",
-        "endpoint_details": {
-            "folder_id": "1a2b3c4d5e6f",
-            "include_shared": True,
-            "file_types": ["dwg", "pdf", "docx"]
-        },
-        "schedule": "interval",
-        "schedule_config": {"interval_minutes": 5}
-    }
-]
+**Configuration:** `config/connector.yaml`
+```yaml
+endpoints:
+  - name: "Project 0001"
+    endpoint_type: "autodesk_construction_cloud"
+    project_id: "project_0001"
+    user_id: "admin"
+    endpoint_details:
+      project_id: "b.6c2cffb0-e8c8-43d3-b415-e53f4377cedb"
+      file_types: ["rvt", "dwg", "ifc", "nwd", "pdf"]
+    schedule: 
+      type: "interval"
+      interval_minutes: 5
 ```
 
-### 2. **Scheduler Initialization**
-The scheduler starts background jobs for each active endpoint:
+### Database Infrastructure
 
-```python
-# APScheduler manages concurrent sync jobs
-scheduler = AsyncIOScheduler()
-for endpoint in active_endpoints:
-    scheduler.add_job(
-        sync_endpoint,
-        trigger=create_trigger(endpoint.schedule),
-        args=[endpoint.id],
-        id=f"sync_{endpoint.id}",
-        max_instances=1  # Prevent overlapping syncs
-    )
+**Where:** `src/connector/database/`
+- `models.py` - SQLAlchemy table definitions
+- `service.py` - Database operations
+- `operations.py` - Repository pattern for CRUD
+
+**Current Implementation:** SQLite (placeholder for Supabase)
+- **Location**: `./data/connector.db`
+- **Tables**: 
+  - `endpoints` - API endpoint configurations
+  - `files` - File metadata from external APIs
+  - `sync_logs` - Sync operation history
+
+**Schema:**
+```sql
+-- File metadata table
+CREATE TABLE files (
+  id INTEGER PRIMARY KEY,
+  endpoint_id INTEGER,
+  external_file_id VARCHAR(255),
+  file_name VARCHAR(500),
+  file_path VARCHAR(1000),
+  file_link VARCHAR(1000),
+  file_size INTEGER,
+  created_at DATETIME,
+  updated_at DATETIME
+);
 ```
 
-### 3. **Sync Execution Pipeline**
+### Scheduler System
 
-For each scheduled sync operation:
+**Where:** `src/connector/scheduler/`
+- `scheduler_manager.py` - Manages multiple sync jobs
+- `job_scheduler.py` - Individual job execution
 
-**a) API Client Authentication**
-```python
-# Factory pattern creates appropriate client
-client = APIClientFactory.create_client(
-    endpoint.type, 
-    endpoint.endpoint_details
-)
-await client.authenticate()  # OAuth 2.0 flow
-```
+**How it works:**
+1. **Initialization**: Reads endpoint configs from database
+2. **Job Creation**: Creates APScheduler jobs for each active endpoint
+3. **Execution**: Runs sync jobs on configured intervals (default: 5 minutes)
+4. **Monitoring**: Health checks and job status tracking
 
-**b) File Discovery with Filtering**
-```python
-# Fetch only files modified since last sync
-since_timestamp = get_last_sync_timestamp(endpoint.id)
-async for file_metadata in client.list_files(since=since_timestamp):
-    # Apply filters: file types, folders, size limits
-    if file_passes_filters(file_metadata, endpoint.filters):
-        yield file_metadata
-```
+**Schedule Types:**
+- `interval` - Fixed intervals (e.g., every 5 minutes)
+- `cron` - Cron-style scheduling
+- `manual` - Manual trigger only
 
-**c) Metadata Extraction and Standardization**
-```python
-# Convert API-specific metadata to standard format
-standardized_metadata = FileMetadata(
-    external_id=file_data["id"],
-    title=file_data["name"],
-    file_link=generate_download_link(file_data),
-    date_created=parse_timestamp(file_data["createdTime"]),
-    date_updated=parse_timestamp(file_data["modifiedTime"]),
-    project_id=endpoint.project_id,
-    user_id=endpoint.user_id,
-    metadata={
-        "size": file_data.get("size"),
-        "mime_type": file_data.get("mimeType"),
-        "permissions": extract_permissions(file_data)
-    }
-)
-```
+## 📊 Monitoring
 
-**d) Database Synchronization**
-```python
-# Batch process for efficiency
-async with database.transaction():
-    files_to_create = []
-    files_to_update = []
-    
-    for file_metadata in file_batch:
-        existing_file = await db.get_file_by_external_id(
-            file_metadata.external_id, endpoint.id
-        )
-        
-        if existing_file:
-            if file_metadata.date_updated > existing_file.date_updated:
-                files_to_update.append(file_metadata)
-        else:
-            files_to_create.append(file_metadata)
-    
-    # Batch database operations
-    await db.batch_create_files(files_to_create)
-    await db.batch_update_files(files_to_update)
-```
+### Health Endpoints
+- `GET /health` - Basic health check
+- `GET /status` - Detailed system status including database and scheduler
 
-**e) Sync Logging and Metrics**
-```python
-# Record sync statistics
-sync_result = SyncResult(
-    endpoint_id=endpoint.id,
-    success=True,
-    files_processed=len(all_files),
-    files_added=len(files_to_create),
-    files_updated=len(files_to_update),
-    sync_duration=end_time - start_time
-)
+### Logs
+- **Location**: `./logs/connector.log`
+- **Format**: Structured JSON with timestamps
+- **Levels**: DEBUG, INFO, WARNING, ERROR
 
-await db.create_sync_log(sync_result)
-metrics.record_timing("sync.duration", sync_result.sync_duration)
-metrics.increment_counter("sync.files_processed", sync_result.files_processed)
-```
+## 🐳 Deployment
 
-### 4. **Error Handling and Recovery**
-
-The pipeline includes comprehensive error handling:
-
-```python
-try:
-    result = await sync_endpoint(endpoint)
-except RateLimitError as e:
-    # Exponential backoff retry
-    await asyncio.sleep(e.retry_after or 60)
-    await schedule_retry(endpoint, delay=e.retry_after)
-    
-except AuthenticationError as e:
-    # Refresh credentials and retry
-    await client.refresh_authentication()
-    await schedule_retry(endpoint, delay=30)
-    
-except APIConnectionError as e:
-    # Circuit breaker pattern
-    circuit_breaker.record_failure()
-    if circuit_breaker.should_trip():
-        await disable_endpoint_temporarily(endpoint)
-```
-
-### 5. **Performance Optimization**
-
-The pipeline employs several performance optimizations:
-
-**Connection Pooling**
-```python
-# Reuse HTTP connections across requests
-connection_pool = ConnectionPoolManager(
-    max_connections=100,
-    max_connections_per_host=30,
-    keepalive_timeout=30
-)
-```
-
-**Batch Processing**
-```python
-# Process files in configurable batches
-batch_processor = BatchProcessor(
-    default_batch_size=50,
-    max_concurrent_batches=10
-)
-await batch_processor.process_batches(files, process_file_batch)
-```
-
-**Async Concurrency**
-```python
-# Process multiple endpoints concurrently
-semaphore = asyncio.Semaphore(max_concurrent_syncs)
-tasks = [sync_endpoint_with_semaphore(ep) for ep in endpoints]
-results = await asyncio.gather(*tasks, return_exceptions=True)
-```
-
-## Data Flow Architecture
-
-### File Metadata Model
-Each synchronized file is stored with standardized metadata:
-
-```python
-@dataclass
-class FileMetadata:
-    external_id: str        # API-specific file identifier
-    title: str             # File name/title
-    file_link: str         # Direct download/view URL
-    date_created: datetime # File creation timestamp
-    date_updated: datetime # Last modification timestamp
-    project_id: str        # Associated project identifier
-    user_id: str          # File owner/creator identifier
-    metadata: Dict[str, Any]  # Platform-specific additional data
-```
-
-### Database Schema
-The system maintains three core tables:
-
-**Endpoints Table**
-- `id`: Primary key
-- `endpoint_type`: google_drive, autodesk, etc.
-- `name`: Human-readable endpoint name
-- `project_id`: Associated project
-- `user_id`: Endpoint owner
-- `endpoint_details`: JSON configuration
-- `is_active`: Enable/disable flag
-- `created_at`, `updated_at`: Timestamps
-
-**Files Table**
-- `id`: Primary key
-- `external_id`: API-specific file ID
-- `endpoint_id`: Foreign key to endpoints
-- `title`: File name
-- `file_link`: Access URL
-- `date_created`, `date_updated`: File timestamps
-- `project_id`, `user_id`: Association fields
-- `file_metadata`: JSON additional data
-- `created_at`, `updated_at`: Record timestamps
-
-**Sync Logs Table**
-- `id`: Primary key
-- `endpoint_id`: Foreign key to endpoints
-- `sync_started`, `sync_completed`: Operation timestamps
-- `files_processed`, `files_added`, `files_updated`: Counters
-- `sync_status`: completed, failed, partial
-- `error_message`: Failure details
-- `sync_duration`: Performance metric
-
-## Quick Start
-
-### 1. Installation
+### Docker (Simple)
 ```bash
-git clone https://github.com/your-org/file-connector.git
-cd file-connector
-pip install -r requirements.txt
+# Build image
+docker build -t file-connector .
+
+# Run container
+docker run -d \
+  -p 8080:8080 \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/logs:/app/logs \
+  -e CONNECTOR_AUTODESK_CLIENT_ID=your_id \
+  -e CONNECTOR_AUTODESK_CLIENT_SECRET=your_secret \
+  file-connector
 ```
 
-### 2. Configuration
+### Docker Compose (Recommended)
 ```bash
-# Copy environment template
-cp env.example .env
+# Development environment
+docker-compose -f docker-compose.dev.yml up
 
-# Edit configuration
-vim .env  # Add your API credentials
-
-# Copy configuration template
-cp config/connector.example.yaml config/connector.yaml
-```
-
-### 3. Run Locally
-```bash
-# Start the connector
-python -m src.connector.main
-
-# Or using Docker
+# Production environment  
 docker-compose up -d
 ```
 
-### 4. Verify Operation
+### Manual Deployment
+1. Install Python 3.9+ on target system
+2. Copy project files
+3. Set environment variables
+4. Run: `python -m src.connector.main`
+
+## 🔧 Configuration
+
+### Environment Variables
 ```bash
-# Check health
-curl http://localhost:8080/health
+# Database
+DATABASE_URL=sqlite:///./data/connector.db
 
-# View metrics
-curl http://localhost:8080/metrics
+# Autodesk ACC
+CONNECTOR_AUTODESK_CLIENT_ID=your_client_id
+CONNECTOR_AUTODESK_CLIENT_SECRET=your_client_secret
+CONNECTOR_AUTODESK_BASE_URL=https://developer.api.autodesk.com
 
-# Run tests
-./scripts/test.sh quick
+# Google Drive
+GOOGLE_CREDENTIALS_PATH=./credentials/google-service-account.json
+
+# Scheduling
+SYNC_INTERVAL_MINUTES=5
+MAX_CONCURRENT_SYNCS=5
+
+# Logging
+CONNECTOR_LOG_LEVEL=INFO
 ```
 
-## Architecture Benefits
+### Adding New Endpoints
 
-### 🔧 **Extensibility**
-- **Plugin Architecture**: New API clients can be added by implementing the `BaseAPIClient` interface
-- **Configurable Filters**: File type, size, and folder filters can be customized per endpoint
-- **Multiple Databases**: Supports SQLite (development) and PostgreSQL (production)
+1. **Add to config file** (`config/connector.yaml`):
+   ```yaml
+   endpoints:
+     - name: "My New Endpoint"
+       endpoint_type: "autodesk_construction_cloud"
+       project_id: "my_project"
+       user_id: "my_user"
+       endpoint_details:
+         project_id: "autodesk_project_id"
+         folder_id: "specific_folder_id"  # optional
+         file_types: ["dwg", "pdf"]
+   ```
 
-### 🚀 **Scalability**
-- **Horizontal Scaling**: Multiple connector instances can run concurrently with different endpoints
-- **Kubernetes Ready**: Includes complete Kubernetes manifests with autoscaling
-- **Resource Efficient**: Optimized for minimal CPU and memory usage
+2. **Restart application** - Config is synced to database on startup
 
-### 🛡️ **Reliability**
-- **Fault Tolerance**: Circuit breakers and retry logic handle API failures gracefully
-- **Data Consistency**: Database transactions ensure consistent metadata state
-- **Monitoring**: Comprehensive metrics enable proactive issue detection
+## 🧪 Testing
 
-### ⚡ **Performance**
-- **Concurrent Processing**: Async architecture maximizes throughput
-- **Intelligent Caching**: Connection pooling and metadata caching reduce API calls
-- **Batch Operations**: Database batch processing minimizes transaction overhead
+### Manual Testing
+```bash
+# Test specific endpoint
+python scripts/test_endpoints.py --type autodesk_construction_cloud --max-files 5
 
-This architecture enables the File Connector to efficiently manage thousands of files across multiple cloud platforms while maintaining high availability and performance standards.
+# Test OAuth flow
+python scripts/test_oauth.py
+```
+
+### Unit Tests
+```bash
+# Run remaining essential tests
+python -m pytest tests/ -v
+```
+
+## 📁 Project Structure
+
+```
+connector/
+├── src/connector/           # Main application code
+│   ├── api_clients/        # API integrations (Autodesk, Google Drive)
+│   ├── auth/              # OAuth authentication handlers
+│   ├── config/            # Configuration management
+│   ├── core/              # Core business logic (FileConnector, SyncEngine)
+│   ├── database/          # Database models and operations
+│   ├── scheduler/         # Job scheduling and management
+│   ├── utils/             # Utilities (logging, etc.)
+│   └── main.py            # Application entry point
+├── tests/                 # Essential unit tests
+├── scripts/               # Utility scripts
+├── config/                # Configuration files
+├── data/                  # SQLite database
+├── logs/                  # Application logs
+└── tokens/                # OAuth tokens (auto-generated)
+```
+
+## 🔧 Development
+
+### Key Files
+- `src/connector/main.py` - Application entry point and web server
+- `src/connector/core/sync_engine.py` - Core sync logic
+- `src/connector/scheduler/scheduler_manager.py` - Job scheduling
+- `config/connector.yaml` - Endpoint and schedule configuration
+
+### OAuth Setup
+1. **Autodesk**: Follow `OAUTH_SETUP.md` for APS app setup
+2. **Google Drive**: Set up service account and download credentials JSON
+
+### Extending the System
+- **New API clients**: Inherit from `BaseAPIClient` in `src/connector/api_clients/`
+- **Custom sync logic**: Modify `SyncEngine` in `src/connector/core/`
+- **Database changes**: Update models in `src/connector/database/models.py`
+
+---
+
+For detailed OAuth setup instructions, see `OAUTH_SETUP.md`.
