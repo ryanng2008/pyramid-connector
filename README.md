@@ -26,14 +26,17 @@ A Python-based file synchronization connector that fetches files from external A
    ```
 
 4. **Set API Credentials**
-   Edit `.env` with your API credentials:
-   ```bash
-   # Autodesk Construction Cloud
-   CONNECTOR_AUTODESK_CLIENT_ID=your_client_id
-   CONNECTOR_AUTODESK_CLIENT_SECRET=your_client_secret
-   
-   # Google Drive (optional)
-   GOOGLE_CREDENTIALS_PATH=./credentials/google-service-account.json
+   Edit `config/connector.yaml` with your API credentials:
+   ```yaml
+   clients:
+     autodesk:
+       client_id: "your_client_id"
+       client_secret: "your_client_secret"
+       base_url: "https://developer.api.autodesk.com"
+       callback_url: "http://localhost:8081/oauth/callback"
+     google_drive:
+       credentials_path: "./credentials/google-service-account.json"
+       application_name: "File Connector"
    ```
 
 5. **Launch in Development**
@@ -185,14 +188,6 @@ docker-compose up -d
 # Database
 DATABASE_URL=sqlite:///./data/connector.db
 
-# Autodesk ACC
-CONNECTOR_AUTODESK_CLIENT_ID=your_client_id
-CONNECTOR_AUTODESK_CLIENT_SECRET=your_client_secret
-CONNECTOR_AUTODESK_BASE_URL=https://developer.api.autodesk.com
-
-# Google Drive
-GOOGLE_CREDENTIALS_PATH=./credentials/google-service-account.json
-
 # Scheduling
 SYNC_INTERVAL_MINUTES=5
 MAX_CONCURRENT_SYNCS=5
@@ -201,10 +196,19 @@ MAX_CONCURRENT_SYNCS=5
 CONNECTOR_LOG_LEVEL=INFO
 ```
 
+**Note**: API credentials are now configured in `config/connector.yaml` under the `clients:` section for better multi-client support.
+
 ### Adding New Endpoints
 
-1. **Add to config file** (`config/connector.yaml`):
+1. **Add client credentials and endpoint to config file** (`config/connector.yaml`):
    ```yaml
+   clients:
+     autodesk:
+       client_id: "your_client_id"
+       client_secret: "your_client_secret"
+       base_url: "https://developer.api.autodesk.com"
+       callback_url: "http://localhost:8081/oauth/callback"
+   
    endpoints:
      - name: "My New Endpoint"
        endpoint_type: "autodesk_construction_cloud"
@@ -264,8 +268,141 @@ connector/
 - `src/connector/scheduler/scheduler_manager.py` - Job scheduling
 - `config/connector.yaml` - Endpoint and schedule configuration
 
+### Adding New Autodesk Endpoint
+
+To add a new Autodesk Construction Cloud endpoint, you need to set up OAuth 2.0 credentials and configure the endpoint:
+
+#### 1. **Get Autodesk APS Credentials**
+
+1. **Create APS App**: Go to [Autodesk Platform Services](https://aps.autodesk.com/)
+2. **Create new app** with these settings:
+   - **App Type**: Web App
+   - **Callback URL**: `http://localhost:8081/oauth/callback` (note: port 8081, not 8080)
+   - **API Access**: Data Management API, Construction Cloud API
+3. **Get credentials**: Note your `Client ID` and `Client Secret`
+
+#### 2. **Configure Credentials**
+
+Add your credentials directly to `config/connector.yaml` (we'll make this more secure later):
+```yaml
+# Global client configurations
+clients:
+  autodesk:
+    client_id: "your_client_id_here"
+    client_secret: "your_client_secret_here"
+    base_url: "https://developer.api.autodesk.com"
+    callback_url: "http://localhost:8081/oauth/callback"
+```
+
+#### 3. **Get Project ID**
+
+You need the Autodesk project ID (starts with `b.`):
+- **Option A**: Use Autodesk Construction Cloud web interface → Copy project ID from URL
+- **Option B**: Use the test script: `python scripts/test_endpoints.py --type autodesk_construction_cloud --list-projects`
+
+#### 4. **Add Endpoint Configuration**
+
+Complete your `config/connector.yaml` with both client config and endpoints:
+```yaml
+# Global client configurations
+clients:
+  autodesk:
+    client_id: "your_client_id_here"
+    client_secret: "your_client_secret_here" 
+    base_url: "https://developer.api.autodesk.com"
+    callback_url: "http://localhost:8081/oauth/callback"
+  google_drive:
+    credentials_path: "./credentials/google-service-account.json"
+    application_name: "File Connector"
+
+# Individual endpoints
+endpoints:
+  - name: "My Project Name"                    # Human-readable name
+    endpoint_type: "autodesk_construction_cloud"
+    project_id: "my_project_001"              # Internal project identifier
+    user_id: "admin"                          # Internal user identifier
+    endpoint_details:
+      project_id: "b.6c2cffb0-e8c8-43d3-b415-e53f4377cedb"  # Autodesk project ID
+      folder_id: null                         # Optional: specific folder ID
+      file_types: ["rvt", "dwg", "ifc", "nwd", "pdf"]      # File types to sync
+      include_subfolders: true                # Include subfolders
+    schedule:
+      type: "interval"                        # Schedule type
+      interval_minutes: 5                     # Sync every 5 minutes
+    is_active: true                           # Enable this endpoint
+
+  # Add more endpoints for different clients/projects
+  - name: "Another Project"
+    endpoint_type: "autodesk_construction_cloud"
+    project_id: "project_002"
+    user_id: "user2"
+    endpoint_details:
+      project_id: "b.another-project-id-here"
+      file_types: ["dwg", "pdf"]
+    schedule:
+      type: "interval"
+      interval_minutes: 10
+    is_active: true
+```
+
+#### 5. **Complete 3-Legged OAuth Flow**
+
+The first time you run the connector, it will need to authenticate:
+
+1. **Start the connector**: `python -m src.connector.main`
+2. **Wait for sync trigger** (or run manually): The system will detect missing tokens
+3. **Follow the authentication flow**:
+   ```
+   ================================================
+   AUTODESK AUTHENTICATION REQUIRED
+   ================================================
+   Please visit the following URL to authorize the application:
+   
+   https://developer.api.autodesk.com/authentication/v1/authorize?...
+   
+   Waiting for authentication... (this window will auto-close)
+   ================================================
+   ```
+4. **Click the URL** → Log in to Autodesk → Grant permissions
+5. **Tokens saved automatically** to `tokens/autodesk_tokens.json`
+
+#### 6. **Verify Setup**
+
+Test your endpoint:
+```bash
+# Test authentication and file listing
+python scripts/test_endpoints.py --type autodesk_construction_cloud --max-files 5
+
+# Check logs for successful sync
+tail -f logs/connector.log | grep -i autodesk
+```
+
+#### 7. **Token Management**
+
+- **Automatic refresh**: Tokens refresh automatically when expired
+- **Token location**: `tokens/autodesk_tokens.json`
+- **Re-authentication**: Delete token file to force re-authentication
+- **Token expires**: If not used for ~1 hour, you may need to re-authenticate
+
+#### Troubleshooting
+
+**Common Issues:**
+- **Port conflict**: Make sure port 8081 is free for OAuth callback
+- **Wrong callback URL**: Must match exactly in APS app settings
+- **Project access**: Ensure your Autodesk account has access to the project
+- **API permissions**: Verify your APS app has Data Management + Construction Cloud access
+
+**Test Commands:**
+```bash
+# Test OAuth flow specifically
+python scripts/test_oauth.py
+
+# Test with verbose logging
+CONNECTOR_LOG_LEVEL=DEBUG python scripts/test_endpoints.py --type autodesk_construction_cloud --verbose
+```
+
 ### OAuth Setup
-1. **Autodesk**: Follow `OAUTH_SETUP.md` for APS app setup
+1. **Autodesk**: Follow steps above for APS app setup
 2. **Google Drive**: Set up service account and download credentials JSON
 
 ### Extending the System
