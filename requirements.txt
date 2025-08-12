@@ -5,9 +5,11 @@ aiohttp==3.12.15
 PyYAML==6.0.2
 APScheduler==3.11.0
 
-# Database (mock Supabase)
+# Database
 sqlalchemy==2.0.25
 alembic==1.13.1
+supabase==2.3.4
+postgrest==0.16.0
 
 # API clients
 google-api-python-client==2.111.0
@@ -33,7 +35,7 @@ toml==0.10.2
 pytest==7.4.3
 pytest-asyncio==0.23.2
 pytest-mock==3.12.0
-httpx-mock==0.7.0
+respx==0.20.2
 
 # Development
 black==23.12.1

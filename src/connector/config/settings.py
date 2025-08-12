@@ -39,13 +39,14 @@ class AutodeskSettings(BaseSettings):
 
 
 class SupabaseSettings(BaseSettings):
-    """Supabase configuration (mock for now)."""
+    """Supabase configuration."""
     
     url: str = Field(default="", env="SUPABASE_URL")
+    anon_key: str = Field(default="", env="SUPABASE_ANON_KEY")
     service_role_key: str = Field(default="", env="SUPABASE_SERVICE_ROLE_KEY")
     
     class Config:
-        env_prefix = "SUPABASE_"
+        env_prefix = "CONNECTOR_SUPABASE_"
 
 
 class SchedulingSettings(BaseSettings):
