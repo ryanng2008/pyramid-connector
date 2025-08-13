@@ -1,6 +1,6 @@
 # File Connector
 
-A Python-based file synchronization connector that fetches files from external APIs (Autodesk Construction Cloud, Google Drive) and stores metadata in a database. Files are synced on a configurable schedule.
+A Python-based file synchronization connector that fetches files from external APIs (Autodesk Construction Cloud, Google Drive) and stores metadata in Supabase. Files are synced on a configurable schedule.
 
 ## 🚀 Quick Start
 
@@ -10,6 +10,7 @@ A Python-based file synchronization connector that fetches files from external A
    ```bash
    python 3.9+
    pip
+   Supabase account
    ```
 
 2. **Install Dependencies**
@@ -22,21 +23,22 @@ A Python-based file synchronization connector that fetches files from external A
 3. **Configure Environment**
    ```bash
    cp env.example .env
-   cp config/connector.example.yaml config/connector.yaml
+   ```
+   Update `.env` with your Supabase credentials:
+   ```bash
+   CONNECTOR_SUPABASE_URL=your_project_url
+   CONNECTOR_SUPABASE_ANON_KEY=your_anon_key
+   CONNECTOR_SUPABASE_SERVICE_ROLE_KEY=your_service_role_key  # For system operations
    ```
 
 4. **Set API Credentials**
-   Edit `config/connector.yaml` with your API credentials:
    ```yaml
-   clients:
-     autodesk:
-       client_id: "your_client_id"
-       client_secret: "your_client_secret"
-       base_url: "https://developer.api.autodesk.com"
-       callback_url: "http://localhost:8081/oauth/callback"
-     google_drive:
-       credentials_path: "./credentials/google-service-account.json"
-       application_name: "File Connector"
+   # Autodesk Construction Cloud
+   CONNECTOR_AUTODESK_CLIENT_ID=your_client_id
+   CONNECTOR_AUTODESK_CLIENT_SECRET=your_client_secret
+   
+   # Google Drive (path to service account JSON)
+   CONNECTOR_GOOGLE_DRIVE_CREDENTIALS_PATH=./credentials/google-service-account.json
    ```
 
 5. **Launch in Development**
@@ -51,107 +53,202 @@ A Python-based file synchronization connector that fetches files from external A
 ## 🔧 How It Works
 
 ### Architecture Overview
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   API Clients   │───▶│   Sync Engine    │───▶│    Database     │
-│ (Autodesk/GDrive)│    │                  │    │   (SQLite)      │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-         │                       │                       │
-         │              ┌─────────────────┐              │
-         └──────────────│   Scheduler     │──────────────┘
-                        │ (Every 5 mins)  │
-                        └─────────────────┘
-```
-
-### Endpoint Fetching
-
-**Where:** `src/connector/api_clients/`
-- `autodesk.py` - Autodesk Construction Cloud API client
-- `google_drive.py` - Google Drive API client
-- `factory.py` - Creates appropriate client based on endpoint type
-
-**How it works:**
-1. **Authentication**: OAuth 2.0 flow with automatic token refresh
-2. **File Discovery**: API calls to list files with filters (file types, folders, date ranges)
-3. **Metadata Extraction**: Standardizes file metadata across different APIs
-4. **Rate Limiting**: Built-in delays to respect API limits
-
-**Configuration:** `config/connector.yaml`
-```yaml
-endpoints:
-  - name: "Project 0001"
-    endpoint_type: "autodesk_construction_cloud"
-    project_id: "project_0001"
-    user_id: "admin"
-    endpoint_details:
-      project_id: "b.6c2cffb0-e8c8-43d3-b415-e53f4377cedb"
-      file_types: ["rvt", "dwg", "ifc", "nwd", "pdf"]
-    schedule: 
-      type: "interval"
-      interval_minutes: 5
+```mermaid
+graph TD
+    A["🔌 Connector"] --> B["📊 Supabase Database"]
+    A --> C["🏗️ Autodesk API"]
+    A --> D["💾 Google Drive API"]
+    
+    B --> E["endpoints table"]
+    B --> F["files table"] 
+    B --> G["sync_logs table"]
+    B --> H["oauth_tokens table"]
+    
+    C --> |"OAuth 2.0"| I["🔑 Authentication"]
+    D --> |"Service Account"| I
+    I --> A
 ```
 
-### Database Infrastructure
+### Database Schema (Supabase)
 
-**Where:** `src/connector/database/`
-- `models.py` - SQLAlchemy table definitions
-- `service.py` - Database operations
-- `operations.py` - Repository pattern for CRUD
+The system uses Supabase with the following schema:
 
-**Current Implementation:** SQLite (placeholder for Supabase)
-- **Location**: `./data/connector.db`
-- **Tables**: 
-  - `endpoints` - API endpoint configurations
-  - `files` - File metadata from external APIs
-  - `sync_logs` - Sync operation history
-
-**Schema:**
+#### 1. `endpoints` Table
 ```sql
--- File metadata table
-CREATE TABLE files (
-  id INTEGER PRIMARY KEY,
-  endpoint_id INTEGER,
-  external_file_id VARCHAR(255),
-  file_name VARCHAR(500),
-  file_path VARCHAR(1000),
-  file_link VARCHAR(1000),
-  file_size INTEGER,
-  created_at DATETIME,
-  updated_at DATETIME
+CREATE TABLE endpoints (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    endpoint_type TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    user_id UUID NOT NULL,
+    description TEXT,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    schedule_type TEXT NOT NULL DEFAULT 'interval',
+    schedule_cron TEXT NOT NULL DEFAULT '*/5 * * * *',
+    interval_minutes INTEGER DEFAULT 5,
+    file_types JSONB DEFAULT '["*"]',
+    max_files_per_sync INTEGER DEFAULT 1000,
+    endpoint_config JSONB NOT NULL DEFAULT '{}',
+    tags JSONB DEFAULT '[]',
+    last_sync_status TEXT NOT NULL DEFAULT 'pending'
 );
 ```
 
-### Scheduler System
+#### 2. `oauth_tokens` Table
+```sql
+CREATE TABLE oauth_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    endpoint_id UUID NOT NULL REFERENCES endpoints(id),
+    access_token TEXT NOT NULL,
+    refresh_token TEXT,
+    token_type TEXT DEFAULT 'Bearer',
+    scope TEXT,
+    expires_at TIMESTAMP NOT NULL,
+    is_active BOOLEAN DEFAULT true
+);
+```
 
-**Where:** `src/connector/scheduler/`
-- `scheduler_manager.py` - Manages multiple sync jobs
-- `job_scheduler.py` - Individual job execution
+#### 3. `files` Table
+```sql
+CREATE TABLE files (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    endpoint_id UUID NOT NULL REFERENCES endpoints(id),
+    external_file_id TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_path TEXT,
+    file_link TEXT NOT NULL,
+    file_size BIGINT,
+    file_type TEXT,
+    mime_type TEXT,
+    external_created_at TIMESTAMP,
+    external_updated_at TIMESTAMP,
+    sync_status TEXT DEFAULT 'completed',
+    file_metadata JSONB DEFAULT '{}'
+);
+```
 
-**How it works:**
-1. **Initialization**: Reads endpoint configs from database
-2. **Job Creation**: Creates APScheduler jobs for each active endpoint
-3. **Execution**: Runs sync jobs on configured intervals (default: 5 minutes)
-4. **Monitoring**: Health checks and job status tracking
+### Row Level Security (RLS)
 
-**Schedule Types:**
-- `interval` - Fixed intervals (e.g., every 5 minutes)
-- `cron` - Cron-style scheduling
-- `manual` - Manual trigger only
+The system uses Supabase RLS policies to ensure data isolation:
 
-## 📊 Monitoring
+```sql
+-- Endpoints: Users can only access their own endpoints
+CREATE POLICY "Users can view their own endpoints" 
+ON endpoints FOR SELECT 
+USING (auth.uid()::text = user_id);
 
-### Health Endpoints
-- `GET /health` - Basic health check
-- `GET /status` - Detailed system status including database and scheduler
+-- Files: Users can only access files from their endpoints
+CREATE POLICY "Users can access files from their endpoints" 
+ON files FOR ALL 
+USING (
+    EXISTS (
+        SELECT 1 FROM endpoints 
+        WHERE endpoints.id = files.endpoint_id 
+        AND auth.uid() = endpoints.user_id
+    )
+);
+```
 
-### Logs
-- **Location**: `./logs/connector.log`
-- **Format**: Structured JSON with timestamps
-- **Levels**: DEBUG, INFO, WARNING, ERROR
+### Adding New Endpoints
+
+You can add endpoints in several ways:
+
+1. **Using Python Script**
+   ```bash
+   python scripts/add_endpoint_to_supabase.py
+   ```
+
+2. **Direct SQL in Supabase Dashboard**
+   ```sql
+   INSERT INTO endpoints (
+       name,
+       endpoint_type,
+       project_id,
+       user_id,
+       endpoint_config
+   ) VALUES (
+       'Project 0001',
+       'autodesk_construction_cloud',
+       'project_0001',
+       'your-user-uuid',
+       '{
+           "client_id": "your_client_id",
+           "project_id": "b.your-project-id"
+       }'
+   );
+   ```
+
+3. **Using the API**
+   ```python
+   from supabase import create_client
+
+   supabase = create_client(
+       supabase_url="your-project-url",
+       supabase_key="your-anon-key"
+   )
+
+   endpoint_data = {
+       "name": "Project 0001",
+       "endpoint_type": "autodesk_construction_cloud",
+       "project_id": "project_0001",
+       "user_id": "your-user-uuid",
+       "endpoint_config": {
+           "client_id": "your_client_id",
+           "project_id": "b.your-project-id"
+       }
+   }
+
+   result = supabase.table("endpoints").insert(endpoint_data).execute()
+   ```
+
+### OAuth Token Management
+
+OAuth tokens are stored securely in Supabase:
+
+1. **Token Storage**
+   - Tokens stored in `oauth_tokens` table
+   - One active token per endpoint
+   - Automatic token refresh
+
+2. **Token Security**
+   - RLS ensures tokens are only accessible to authorized users
+   - Service role key used for system operations
+   - Tokens never exposed in logs or config
+
+3. **Token Refresh Flow**
+   ```python
+   # Example token refresh
+   new_token = await supabase.table("oauth_tokens").update({
+       "access_token": "new_token",
+       "refresh_token": "new_refresh_token",
+       "expires_at": "new_expiry_time"
+   }).eq("endpoint_id", endpoint_id).execute()
+   ```
 
 ## 🐳 Deployment
 
-### Docker (Simple)
+### Environment Variables
+
+Required environment variables for production:
+
+```bash
+# Supabase Configuration
+CONNECTOR_SUPABASE_URL=your_project_url
+CONNECTOR_SUPABASE_ANON_KEY=your_anon_key
+CONNECTOR_SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+# API Credentials
+CONNECTOR_AUTODESK_CLIENT_ID=your_client_id
+CONNECTOR_AUTODESK_CLIENT_SECRET=your_client_secret
+
+# Application Settings
+CONNECTOR_ENVIRONMENT=production
+CONNECTOR_LOG_LEVEL=INFO
+CONNECTOR_MAX_CONCURRENT_SYNCS=10
+```
+
+### Docker Deployment
+
 ```bash
 # Build image
 docker build -t file-connector .
@@ -159,257 +256,77 @@ docker build -t file-connector .
 # Run container
 docker run -d \
   -p 8080:8080 \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/logs:/app/logs \
-  -e CONNECTOR_AUTODESK_CLIENT_ID=your_id \
-  -e CONNECTOR_AUTODESK_CLIENT_SECRET=your_secret \
+  --env-file .env \
   file-connector
 ```
 
-### Docker Compose (Recommended)
-```bash
-# Development environment
-docker-compose -f docker-compose.dev.yml up
+### Docker Compose
 
-# Production environment  
-docker-compose up -d
+```yaml
+version: '3.8'
+services:
+  connector:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file: .env
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
 ```
 
-### Manual Deployment
-1. Install Python 3.9+ on target system
-2. Copy project files
-3. Set environment variables
-4. Run: `python -m src.connector.main`
+## 📊 Monitoring
 
-## 🔧 Configuration
+### Health Checks
+- `GET /health` - Basic health check
+- `GET /status` - Detailed system status
 
-### Environment Variables
-```bash
-# Database
-DATABASE_URL=sqlite:///./data/connector.db
+### Supabase Queries
 
-# Scheduling
-SYNC_INTERVAL_MINUTES=5
-MAX_CONCURRENT_SYNCS=5
+Useful monitoring queries:
 
-# Logging
-CONNECTOR_LOG_LEVEL=INFO
+```sql
+-- Get endpoints with token status
+SELECT 
+    e.name,
+    e.endpoint_type,
+    e.enabled,
+    e.last_sync_status,
+    CASE 
+        WHEN t.expires_at > NOW() THEN 'Valid'
+        WHEN t.expires_at IS NOT NULL THEN 'Expired'
+        ELSE 'No Token'
+    END as token_status
+FROM endpoints e
+LEFT JOIN oauth_tokens t ON e.id = t.endpoint_id AND t.is_active = true;
+
+-- Get sync statistics
+SELECT 
+    endpoint_id,
+    COUNT(*) as total_files,
+    SUM(file_size) as total_size,
+    MAX(external_updated_at) as latest_update
+FROM files
+GROUP BY endpoint_id;
 ```
-
-**Note**: API credentials are now configured in `config/connector.yaml` under the `clients:` section for better multi-client support.
-
-### Adding New Endpoints
-
-1. **Add client credentials and endpoint to config file** (`config/connector.yaml`):
-   ```yaml
-   clients:
-     autodesk:
-       client_id: "your_client_id"
-       client_secret: "your_client_secret"
-       base_url: "https://developer.api.autodesk.com"
-       callback_url: "http://localhost:8081/oauth/callback"
-   
-   endpoints:
-     - name: "My New Endpoint"
-       endpoint_type: "autodesk_construction_cloud"
-       project_id: "my_project"
-       user_id: "my_user"
-       endpoint_details:
-         project_id: "autodesk_project_id"
-         folder_id: "specific_folder_id"  # optional
-         file_types: ["dwg", "pdf"]
-   ```
-
-2. **Restart application** - Config is synced to database on startup
 
 ## 🧪 Testing
 
-### Manual Testing
 ```bash
+# Test Supabase connection
+python scripts/test_supabase_integration.py
+
 # Test specific endpoint
-python scripts/test_endpoints.py --type autodesk_construction_cloud --max-files 5
+python scripts/test_endpoints.py --type autodesk_construction_cloud
 
-# Test OAuth flow
-python scripts/test_oauth.py
-```
-
-### Unit Tests
-```bash
-# Run remaining essential tests
+# Run all tests
 python -m pytest tests/ -v
 ```
 
-## 📁 Project Structure
+## 📚 Documentation
 
-```
-connector/
-├── src/connector/           # Main application code
-│   ├── api_clients/        # API integrations (Autodesk, Google Drive)
-│   ├── auth/              # OAuth authentication handlers
-│   ├── config/            # Configuration management
-│   ├── core/              # Core business logic (FileConnector, SyncEngine)
-│   ├── database/          # Database models and operations
-│   ├── scheduler/         # Job scheduling and management
-│   ├── utils/             # Utilities (logging, etc.)
-│   └── main.py            # Application entry point
-├── tests/                 # Essential unit tests
-├── scripts/               # Utility scripts
-├── config/                # Configuration files
-├── data/                  # SQLite database
-├── logs/                  # Application logs
-└── tokens/                # OAuth tokens (auto-generated)
-```
-
-## 🔧 Development
-
-### Key Files
-- `src/connector/main.py` - Application entry point and web server
-- `src/connector/core/sync_engine.py` - Core sync logic
-- `src/connector/scheduler/scheduler_manager.py` - Job scheduling
-- `config/connector.yaml` - Endpoint and schedule configuration
-
-### Adding New Autodesk Endpoint
-
-To add a new Autodesk Construction Cloud endpoint, you need to set up OAuth 2.0 credentials and configure the endpoint:
-
-#### 1. **Get Autodesk APS Credentials**
-
-1. **Create APS App**: Go to [Autodesk Platform Services](https://aps.autodesk.com/)
-2. **Create new app** with these settings:
-   - **App Type**: Web App
-   - **Callback URL**: `http://localhost:8081/oauth/callback` (note: port 8081, not 8080)
-   - **API Access**: Data Management API, Construction Cloud API
-3. **Get credentials**: Note your `Client ID` and `Client Secret`
-
-#### 2. **Configure Credentials**
-
-Add your credentials directly to `config/connector.yaml` (we'll make this more secure later):
-```yaml
-# Global client configurations
-clients:
-  autodesk:
-    client_id: "your_client_id_here"
-    client_secret: "your_client_secret_here"
-    base_url: "https://developer.api.autodesk.com"
-    callback_url: "http://localhost:8081/oauth/callback"
-```
-
-#### 3. **Get Project ID**
-
-You need the Autodesk project ID (starts with `b.`):
-- **Option A**: Use Autodesk Construction Cloud web interface → Copy project ID from URL
-- **Option B**: Use the test script: `python scripts/test_endpoints.py --type autodesk_construction_cloud --list-projects`
-
-#### 4. **Add Endpoint Configuration**
-
-Complete your `config/connector.yaml` with both client config and endpoints:
-```yaml
-# Global client configurations
-clients:
-  autodesk:
-    client_id: "your_client_id_here"
-    client_secret: "your_client_secret_here" 
-    base_url: "https://developer.api.autodesk.com"
-    callback_url: "http://localhost:8081/oauth/callback"
-  google_drive:
-    credentials_path: "./credentials/google-service-account.json"
-    application_name: "File Connector"
-
-# Individual endpoints
-endpoints:
-  - name: "My Project Name"                    # Human-readable name
-    endpoint_type: "autodesk_construction_cloud"
-    project_id: "my_project_001"              # Internal project identifier
-    user_id: "admin"                          # Internal user identifier
-    endpoint_details:
-      project_id: "b.6c2cffb0-e8c8-43d3-b415-e53f4377cedb"  # Autodesk project ID
-      folder_id: null                         # Optional: specific folder ID
-      file_types: ["rvt", "dwg", "ifc", "nwd", "pdf"]      # File types to sync
-      include_subfolders: true                # Include subfolders
-    schedule:
-      type: "interval"                        # Schedule type
-      interval_minutes: 5                     # Sync every 5 minutes
-    is_active: true                           # Enable this endpoint
-
-  # Add more endpoints for different clients/projects
-  - name: "Another Project"
-    endpoint_type: "autodesk_construction_cloud"
-    project_id: "project_002"
-    user_id: "user2"
-    endpoint_details:
-      project_id: "b.another-project-id-here"
-      file_types: ["dwg", "pdf"]
-    schedule:
-      type: "interval"
-      interval_minutes: 10
-    is_active: true
-```
-
-#### 5. **Complete 3-Legged OAuth Flow**
-
-The first time you run the connector, it will need to authenticate:
-
-1. **Start the connector**: `python -m src.connector.main`
-2. **Wait for sync trigger** (or run manually): The system will detect missing tokens
-3. **Follow the authentication flow**:
-   ```
-   ================================================
-   AUTODESK AUTHENTICATION REQUIRED
-   ================================================
-   Please visit the following URL to authorize the application:
-   
-   https://developer.api.autodesk.com/authentication/v1/authorize?...
-   
-   Waiting for authentication... (this window will auto-close)
-   ================================================
-   ```
-4. **Click the URL** → Log in to Autodesk → Grant permissions
-5. **Tokens saved automatically** to `tokens/autodesk_tokens.json`
-
-#### 6. **Verify Setup**
-
-Test your endpoint:
-```bash
-# Test authentication and file listing
-python scripts/test_endpoints.py --type autodesk_construction_cloud --max-files 5
-
-# Check logs for successful sync
-tail -f logs/connector.log | grep -i autodesk
-```
-
-#### 7. **Token Management**
-
-- **Automatic refresh**: Tokens refresh automatically when expired
-- **Token location**: `tokens/autodesk_tokens.json`
-- **Re-authentication**: Delete token file to force re-authentication
-- **Token expires**: If not used for ~1 hour, you may need to re-authenticate
-
-#### Troubleshooting
-
-**Common Issues:**
-- **Port conflict**: Make sure port 8081 is free for OAuth callback
-- **Wrong callback URL**: Must match exactly in APS app settings
-- **Project access**: Ensure your Autodesk account has access to the project
-- **API permissions**: Verify your APS app has Data Management + Construction Cloud access
-
-**Test Commands:**
-```bash
-# Test OAuth flow specifically
-python scripts/test_oauth.py
-
-# Test with verbose logging
-CONNECTOR_LOG_LEVEL=DEBUG python scripts/test_endpoints.py --type autodesk_construction_cloud --verbose
-```
-
-### OAuth Setup
-1. **Autodesk**: Follow steps above for APS app setup
-2. **Google Drive**: Set up service account and download credentials JSON
-
-### Extending the System
-- **New API clients**: Inherit from `BaseAPIClient` in `src/connector/api_clients/`
-- **Custom sync logic**: Modify `SyncEngine` in `src/connector/core/`
-- **Database changes**: Update models in `src/connector/database/models.py`
-
----
+- [OAuth Setup](OAUTH_SETUP.md)
+- [API Documentation](API.md)
+- [Deployment Guide](DEPLOYMENT.md)
 
 For detailed OAuth setup instructions, see `OAUTH_SETUP.md`.
